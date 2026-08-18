@@ -55,4 +55,4 @@ def test_wrong_password(client):
         "username": "ryzasore@gmail.com",
         "password" : "ronipanget"
     })
-    assert response.status_code == 400
+    assert response.status_code == 401
