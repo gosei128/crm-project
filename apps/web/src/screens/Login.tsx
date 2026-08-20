@@ -10,10 +10,28 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
+import Signup from "@/components/Signup";
+import { login } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
 
 const LoginScreen = () => {
   const [mode, setMode] = useState<string>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    try {
+      const data = await login(email, password);
+      localStorage.setItem("token", data.access_token);
+      navigate("/dashboard");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
   return (
     <main className="w-full h-screen flex justify-center items-center">
       <Card className="w-full max-w-md">
@@ -29,7 +47,7 @@ const LoginScreen = () => {
         </CardHeader>
         <CardContent>
           {mode == "login" ? (
-            <form>
+            <form onSubmit={handleSubmit}>
               <div className="flex flex-col gap-6">
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email</Label>
@@ -38,6 +56,8 @@ const LoginScreen = () => {
                     type="email"
                     placeholder="m@example.com"
                     required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
                 <div className="grid gap-2">
@@ -50,66 +70,38 @@ const LoginScreen = () => {
                       Forgot your password?
                     </a>
                   </div>
-                  <Input id="password" type="password" required />
-                </div>
-              </div>
-            </form>
-          ) : (
-            <form>
-              <div className="flex flex-col gap-6">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder="m@example.com"
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     required
                   />
-                </div>
-                <div className="grid gap-2">
-                  <div className="flex items-center">
-                    <Label htmlFor="password">Password</Label>
-                  </div>
-                  <Input id="password" type="password" required />
-                </div>
-                <div className="grid gap-2">
-                  <div className="flex items-center">
-                    <Label htmlFor="password">Confirm Password</Label>
-                  </div>
-                  <Input id="password" type="password" required />
+                  {error && <p>{error}</p>}
                 </div>
               </div>
-            </form>
-          )}
-        </CardContent>
-        <CardFooter className="flex-col gap-2">
-          {mode == "login" ? (
-            <>
-              <Button type="submit" className="w-full">
+              <Button
+                type="submit"
+                className="w-full mt-8 bg-foreground hover:bg-foreground/90"
+              >
                 Login
               </Button>
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setMode("signup")}
-              >
-                Sign up
-              </Button>
-            </>
+            </form>
           ) : (
-            <>
-              <Button type="submit" className="w-full tt">
-                Create Account
-              </Button>
-              <p
-                className="underlined text-xs text-muted-foreground cursor-pointer"
-                onClick={() => setMode("login")}
-              >
-                Already have account?
-              </p>
-            </>
+            <Signup onSwitchToLogin={() => setMode("login")} />
           )}
-        </CardFooter>
+        </CardContent>
+        {mode == "login" && (
+          <CardFooter className="flex-col gap-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setMode("signup")}
+            >
+              Sign up
+            </Button>
+          </CardFooter>
+        )}
       </Card>
     </main>
   );
