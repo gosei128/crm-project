@@ -36,7 +36,7 @@ const LoginScreen = () => {
     <main className="w-full h-screen flex justify-center items-center">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="font-bold text-2xl text-foreground">
+          <CardTitle className="font-bold text-2xl text-accent">
             {mode == "login" ? "Login to your account" : "Create your account"}
           </CardTitle>
           <CardDescription className="font-regular text-sm text-secondary-foreground">
@@ -82,7 +82,7 @@ const LoginScreen = () => {
               </div>
               <Button
                 type="submit"
-                className="w-full mt-8 bg-foreground hover:bg-foreground/90"
+                className="w-full mt-8 bg-accent hover:bg-accent/90"
               >
                 Login
               </Button>
