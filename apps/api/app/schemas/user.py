@@ -7,8 +7,12 @@ class UserBase(BaseModel):
     name : str
     role : str 
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
+    email: str
+    name: str
     password: str
+    # role is ignored for public signup (always customer); kept optional for backwards compat
+    role: str | None = None
 
 class UserRead(UserBase):
     id : uuid.UUID

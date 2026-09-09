@@ -1,5 +1,81 @@
 const API_URL = import.meta.env.VITE_API_URL;
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  created_at: string;
+}
+
+export interface Service {
+  id: string;
+  owner_id: string;
+  name: string;
+  duration_minutes: number;
+  description: string;
+  is_active: boolean;
+}
+
+export interface Availability {
+  id: string;
+  service_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
+
+export interface Booking {
+  id: string;
+  service_id: string;
+  customer_id: string | null;
+  slot_start: string;
+  slot_end: string;
+  status: string;
+  created_at: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  pax: number;
+  notes: string | null;
+  downpayment_status: string;
+  payment_proof_url: string | null;
+  arrival_time: string | null;
+}
+
+export interface ShopRule {
+  id: number;
+  text: string;
+  order: number;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = localStorage.getItem("token");
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Request failed" }));
+    throw new Error(error.detail || `HTTP ${res.status}`);
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  return res.json();
+}
+
+// --- Auth ---
 export async function login(email: string, password: string) {
   const formData = new URLSearchParams();
   formData.append("username", email);
@@ -22,12 +98,11 @@ export async function signup(
   email: string,
   password: string,
   name: string,
-  role: "owner" | "customer",
 ) {
   const res = await fetch(`${API_URL}/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, name, role }),
+    body: JSON.stringify({ email, password, name }),
   });
 
   if (!res.ok) {
@@ -37,14 +112,186 @@ export async function signup(
   return res.json(); // the created user (UserRead shape)
 }
 
-export async function getServices() {
-  const token = localStorage.getItem("token");
-  const res = await fetch(`${API_URL}/services/`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function getMe(): Promise<User> {
+  return request("/auth/me");
+}
 
-  if (!res) {
-    throw new Error("Failed to load services");
+/** Return the currently authenticated user (null if no/invalid token). */
+export async function getCurrentUser(): Promise<User | null> {
+  if (!localStorage.getItem("token")) return null;
+  try {
+    return await getMe();
+  } catch {
+    return null;
   }
-  return res.json();
+}
+
+// --- Services (singleton haircut) ---
+export async function getServices(): Promise<Service[]> {
+  return request("/services/");
+}
+
+export async function getSingletonService(): Promise<Service> {
+  return request("/services/singleton");
+}
+
+export async function updateSingletonService(data: { name: string; duration_minutes: number; description?: string }): Promise<Service> {
+  return request("/services/singleton", { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function getServiceAvailability(
+  serviceId: string,
+): Promise<Availability[]> {
+  return request(`/services/${serviceId}/availability`);
+}
+
+export async function createAvailability(serviceId: string, data: { day_of_week: number; start_time: string; end_time: string }): Promise<Availability> {
+  return request(`/services/${serviceId}/availability`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteAvailability(serviceId: string, availabilityId: string): Promise<void> {
+  return request(`/services/${serviceId}/availability/${availabilityId}`, { method: "DELETE" });
+}
+
+export async function updateAvailability(serviceId: string, availabilityId: string, data: { day_of_week: number; start_time: string; end_time: string }): Promise<Availability> {
+  return request(`/services/${serviceId}/availability/${availabilityId}`, { method: "PUT", body: JSON.stringify(data) });
+}
+
+// --- Bookings ---
+export async function getAvailableSlots(
+  serviceId: string | null,
+  targetDate: string,
+): Promise<string[]> {
+  const sid = serviceId ? `service_id=${serviceId}&` : "";
+  return request(`/bookings/available_slots?${sid}target_date=${targetDate}`);
+}
+
+export interface CreateBookingPublicData {
+  service_id?: string;
+  slot_start: string;
+  customer_name: string;
+  customer_phone: string;
+  pax?: number;
+  notes?: string;
+}
+
+export async function createPublicBooking(
+  data: CreateBookingPublicData,
+): Promise<Booking> {
+  return request("/bookings/public", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function createAuthenticatedBooking(data: CreateBookingPublicData): Promise<Booking> {
+  return request("/bookings/authenticated", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function uploadPaymentProof(
+  bookingId: string,
+  paymentProofUrl: string,
+): Promise<Booking> {
+  return request(`/bookings/${bookingId}/payment-proof`, {
+    method: "POST",
+    body: JSON.stringify({ payment_proof_url: paymentProofUrl }),
+  });
+}
+
+export async function getMyBookings(): Promise<Booking[]> {
+  return request("/bookings/me");
+}
+
+// --- Owner ---
+export interface OwnerBookingFilters {
+  status?: string;
+  date?: string;
+  service_id?: string;
+}
+
+export async function ownerListBookings(
+  filters: OwnerBookingFilters = {},
+): Promise<Booking[]> {
+  const params = new URLSearchParams();
+  if (filters.status) params.append("status", filters.status);
+  if (filters.date) params.append("date", filters.date);
+  if (filters.service_id) params.append("service_id", filters.service_id);
+
+  return request(`/bookings/all?${params.toString()}`);
+}
+
+export async function ownerConfirmPayment(bookingId: string): Promise<Booking> {
+  return request(`/bookings/${bookingId}/confirm-payment`, {
+    method: "PATCH",
+  });
+}
+
+export async function ownerMarkArrived(
+  bookingId: string,
+  arrivalTime?: string,
+): Promise<Booking> {
+  return request(`/bookings/${bookingId}/mark-arrived`, {
+    method: "PATCH",
+    body: JSON.stringify({ arrival_time: arrivalTime }),
+  });
+}
+
+export async function ownerMarkComplete(bookingId: string): Promise<Booking> {
+  return request(`/bookings/${bookingId}/mark-complete`, {
+    method: "PATCH",
+  });
+}
+
+export async function ownerMarkNoShow(bookingId: string): Promise<Booking> {
+  return request(`/bookings/${bookingId}/mark-no-show`, {
+    method: "PATCH",
+  });
+}
+
+// --- Shop Rules ---
+export async function getShopRules(): Promise<ShopRule[]> {
+  return request("/shop-rules");
+}
+
+// --- Shop Status ---
+export interface ShopStatus {
+  id: string;
+  is_open: boolean;
+  shop_name: string;
+  updated_at: string;
+}
+
+export async function getShopStatus(): Promise<ShopStatus> {
+  return request("/shop/status");
+}
+
+export async function toggleShopStatus(isOpen: boolean): Promise<ShopStatus> {
+  return request("/shop/status", {
+    method: "PATCH",
+    body: JSON.stringify({ is_open: isOpen }),
+  });
+}
+
+// --- Weekly Schedule ---
+export interface SlotInfo {
+  time: string;
+  status: "available" | "booked";
+}
+
+export interface DaySchedule {
+  date: string;
+  day_name: string;
+  slots: SlotInfo[];
+}
+
+export interface WeeklyScheduleResponse {
+  is_open: boolean;
+  days: DaySchedule[];
+}
+
+export async function getWeeklySchedule(startDate: string): Promise<WeeklyScheduleResponse> {
+  return request(`/bookings/weekly-schedule?start_date=${startDate}`);
 }

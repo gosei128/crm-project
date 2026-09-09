@@ -27,7 +27,13 @@ const LoginScreen = () => {
     try {
       const data = await login(email, password);
       localStorage.setItem("token", data.access_token);
-      navigate("/dashboard");
+      // Determine redirect based on role from login response
+      const user = data.user;
+      if (user?.role === "customer") {
+        navigate("/customer");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (e: any) {
       setError(e.message);
     }
@@ -37,12 +43,12 @@ const LoginScreen = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="font-bold text-2xl text-accent">
-            {mode == "login" ? "Login to your account" : "Create your account"}
+            {mode == "login" ? "Kabarbers — Login" : "Create customer account"}
           </CardTitle>
           <CardDescription className="font-regular text-sm text-secondary-foreground">
             {mode == "login"
-              ? "Enter your email below to login to your account"
-              : "Create your account by filling out all the fields"}
+              ? "Enter your email below to login. Owner: owner@kabarbers.local"
+              : "Create your customer account to book a haircut"}
           </CardDescription>
         </CardHeader>
         <CardContent>

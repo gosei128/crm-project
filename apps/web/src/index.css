@@ -62,7 +62,7 @@
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
   --accent: #0d7680;
-  --accent-foreground: oklch(0.205 0 0);
+  --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -126,5 +126,63 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Pointer affordance on every clickable element (ux checklist) */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  select:not(:disabled),
+  a[href] {
+    cursor: pointer;
+  }
+}
+
+/* Minimal enter animation: opacity + translate only (150-250ms, ease-out).
+   Stagger via .animate-enter-1/2/3. Respects prefers-reduced-motion below. */
+@keyframes owner-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@layer utilities {
+  .animate-enter {
+    animation: owner-enter 220ms ease-out both;
+  }
+  .animate-enter-1 {
+    animation: owner-enter 220ms ease-out 40ms both;
+  }
+  .animate-enter-2 {
+    animation: owner-enter 220ms ease-out 80ms both;
+  }
+  .animate-enter-3 {
+    animation: owner-enter 220ms ease-out 120ms both;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-enter,
+  .animate-enter-1,
+  .animate-enter-2,
+  .animate-enter-3 {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

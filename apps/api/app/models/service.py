@@ -7,7 +7,8 @@ class Service(Base):
     __tablename__ = "services"
 
     id : Mapped[uuid.UUID] =  mapped_column(primary_key=True, default=uuid.uuid4)
-    owner_id : Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    # Singleton haircut: owner_id is audit only, nullable for single-shop invariant
+    owner_id : Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     name : Mapped[str] = mapped_column(String)
     duration_minutes : Mapped[int]
     description : Mapped[str | None] = mapped_column(String, default=None)

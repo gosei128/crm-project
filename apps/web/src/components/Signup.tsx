@@ -1,16 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { signup } from "../lib/api";
+import { signup, login } from "../lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface SignupProps {
@@ -21,7 +14,6 @@ const Signup = ({ onSwitchToLogin }: SignupProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<"owner" | "customer">("owner");
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
@@ -29,8 +21,11 @@ const Signup = ({ onSwitchToLogin }: SignupProps) => {
     e.preventDefault();
     setError("");
     try {
-      await signup(email, password, name, role);
-      navigate("/login");
+      await signup(email, password, name);
+      // Single-shop: all signups are customers
+      const data = await login(email, password);
+      localStorage.setItem("token", data.access_token);
+      navigate("/customer");
     } catch (err: any) {
       setError(err.message);
     }
@@ -70,22 +65,6 @@ const Signup = ({ onSwitchToLogin }: SignupProps) => {
             required
           />
         </div>
-        <div className="grid gap-2">
-          <Label>Role</Label>
-          <Select
-            value={role}
-            onValueChange={(v) => setRole(v as "owner" | "customer")}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="owner">Business owner</SelectItem>
-              <SelectItem value="customer">Customer</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
