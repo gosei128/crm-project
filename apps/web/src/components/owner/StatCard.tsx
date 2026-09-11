@@ -1,4 +1,3 @@
-import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -15,7 +14,6 @@ export default function StatCard({
   label,
   value,
   sub,
-  icon: Icon,
   accent = "default",
   loading = false,
   onClick,
@@ -24,7 +22,6 @@ export default function StatCard({
   label: string;
   value: string | number;
   sub?: string;
-  icon: LucideIcon;
   accent?: keyof typeof ACCENTS | string;
   loading?: boolean;
   onClick?: () => void;
@@ -53,7 +50,11 @@ export default function StatCard({
         }
         role={clickable ? "button" : undefined}
         tabIndex={clickable ? 0 : undefined}
-        aria-label={clickable ? `${label}: ${value}. ${actionHint ?? "View details"}` : undefined}
+        aria-label={
+          clickable
+            ? `${label}: ${value}. ${actionHint ?? "View details"}`
+            : undefined
+        }
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -63,7 +64,7 @@ export default function StatCard({
             ) : (
               <p
                 className={cn(
-                  "mt-0.5 truncate text-2xl font-bold tabular-nums",
+                  "mt-0.5 truncate text-4xl font-bold tabular-nums",
                   ACCENTS[accent] ?? ACCENTS.default,
                 )}
               >
@@ -71,12 +72,11 @@ export default function StatCard({
               </p>
             )}
             {sub && !loading && (
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {sub}
+              </p>
             )}
           </div>
-          <span className="rounded-lg bg-accent/15 p-2 text-accent" aria-hidden="true">
-            <Icon className="h-4 w-4" />
-          </span>
         </div>
       </CardContent>
     </Card>

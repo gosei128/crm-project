@@ -1,10 +1,14 @@
-const API_URL = import.meta.env.VITE_API_URL;
+import { clearToken, getToken } from "./token";
+
+export const API_URL = import.meta.env.VITE_API_URL;
+
+export type UserRole = "owner" | "customer";
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: string;
+  role: UserRole;
   created_at: string;
 }
 
@@ -44,15 +48,25 @@ export interface Booking {
 
 export interface ShopRule {
   id: number;
+  title: string;
   text: string;
   order: number;
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
-  const token = localStorage.getItem("token");
+  const token = getToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...(token && { Authorization: `Bearer ${token}` }),
@@ -66,7 +80,8 @@ async function request<T>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `HTTP ${res.status}`);
+    if (res.status === 401) clearToken();
+    throw new ApiError(res.status, error.detail || `HTTP ${res.status}`);
   }
 
   if (res.status === 204) {
@@ -88,7 +103,9 @@ export async function login(email: string, password: string) {
   });
 
   if (!res.ok) {
-    const error = await res.json();
+    const error = await res
+      .json()
+      .catch(() => ({} as { detail?: string }));
     throw new Error(error.detail || "Login failed");
   }
   return res.json(); // { access_token, token_type }
@@ -118,12 +135,22 @@ export async function getMe(): Promise<User> {
 
 /** Return the currently authenticated user (null if no/invalid token). */
 export async function getCurrentUser(): Promise<User | null> {
-  if (!localStorage.getItem("token")) return null;
+  if (!getToken()) return null;
   try {
     return await getMe();
   } catch {
     return null;
   }
+}
+
+export async function claimBooking(
+  bookingId: string,
+  customerPhone: string,
+): Promise<Booking> {
+  return request(`/bookings/${bookingId}/claim`, {
+    method: "POST",
+    body: JSON.stringify({ customer_phone: customerPhone }),
+  });
 }
 
 // --- Services (singleton haircut) ---
@@ -201,6 +228,31 @@ export async function uploadPaymentProof(
   });
 }
 
+/** Upload a GCash proof image file (JPG/PNG/WEBP). Uses multipart/form-data. */
+export async function uploadPaymentProofFile(
+  bookingId: string,
+  file: File,
+): Promise<Booking> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_URL}/bookings/${bookingId}/payment-proof-file`, {
+    method: "POST",
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Upload failed" }));
+    if (res.status === 401) clearToken();
+    throw new ApiError(res.status, error.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getMyBookings(): Promise<Booking[]> {
   return request("/bookings/me");
 }
@@ -253,7 +305,9 @@ export async function ownerMarkNoShow(bookingId: string): Promise<Booking> {
 
 // --- Shop Rules ---
 export async function getShopRules(): Promise<ShopRule[]> {
-  return request("/shop-rules");
+  const res = await request<{ rules: ShopRule[] }>("/shop-rules");
+  const rules = Array.isArray(res.rules) ? res.rules : [];
+  return [...rules].sort((a, b) => a.order - b.order);
 }
 
 // --- Shop Status ---

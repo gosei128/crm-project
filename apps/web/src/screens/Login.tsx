@@ -11,31 +11,52 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import Signup from "@/components/Signup";
-import { login } from "@/lib/api";
-import { useNavigate } from "react-router-dom";
+import { login, API_URL } from "@/lib/api";
+import { seedUser } from "@/lib/currentUser";
+import { setToken } from "@/lib/token";
+import { useAuth } from "@/lib/authContext";
+import { facebookCallbackErrorMessage } from "@/lib/facebookErrors";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const LoginScreen = () => {
+  const { refresh } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [mode, setMode] = useState<string>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+
+  // Backend OAuth failures land back here as ?error=... — surface them.
+  const urlError = facebookCallbackErrorMessage(searchParams.get("error"));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
+    setBusy(true);
     setError("");
+    // A stale OAuth ?error= is superseded by this fresh attempt.
+    setSearchParams({}, { replace: true });
     try {
       const data = await login(email, password);
-      localStorage.setItem("token", data.access_token);
-      // Determine redirect based on role from login response
-      const user = data.user;
-      if (user?.role === "customer") {
+      setToken(data.access_token);
+      seedUser(data.user ?? null);
+      // Sync the auth context BEFORE navigating — the route guards read
+      // context state, and navigating with stale (null) state bounces
+      // straight back to login.
+      const me = await refresh();
+      const role = me?.role ?? data.user?.role;
+      // Determine redirect based on role from the refreshed session
+      if (role === "customer") {
         navigate("/customer");
       } else {
         navigate("/dashboard");
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -84,13 +105,15 @@ const LoginScreen = () => {
                     required
                   />
                   {error && <p>{error}</p>}
+                  {!error && urlError && <p>{urlError}</p>}
                 </div>
               </div>
               <Button
                 type="submit"
                 className="w-full mt-8 bg-accent hover:bg-accent/90"
+                disabled={busy}
               >
-                Login
+                {busy ? "Logging in…" : "Login"}
               </Button>
             </form>
           ) : (
@@ -99,6 +122,15 @@ const LoginScreen = () => {
         </CardContent>
         {mode == "login" && (
           <CardFooter className="flex-col gap-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                window.location.href = `${API_URL}/auth/facebook/login`;
+              }}
+            >
+              Continue with Facebook
+            </Button>
             <Button
               variant="outline"
               className="w-full"

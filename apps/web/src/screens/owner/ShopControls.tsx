@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";import {
+import { Switch } from "@/components/ui/switch";
+import {
   createAvailability,
   deleteAvailability,
   getServiceAvailability,
@@ -39,7 +40,10 @@ import { cn } from "@/lib/utils";
 
 function SectionIcon({ icon: Icon }: { icon: typeof Store }) {
   return (
-    <span className="rounded-lg bg-accent/15 p-1.5 text-accent" aria-hidden="true">
+    <span
+      className="rounded-lg bg-accent/15 p-1.5 text-accent"
+      aria-hidden="true"
+    >
       <Icon className="h-4 w-4" />
     </span>
   );
@@ -107,7 +111,9 @@ export default function ShopControls() {
     try {
       await toggleShopStatus(checked);
       setNotice(
-        checked ? "Shop is open — accepting new bookings." : "Shop is closed — bookings paused.",
+        checked
+          ? "Shop is open — accepting new bookings."
+          : "Shop is closed — bookings paused.",
       );
     } catch (e: unknown) {
       setShopOpen(!checked);
@@ -170,7 +176,8 @@ export default function ShopControls() {
 
   async function handleDeleteAvailability(id: string) {
     if (!service) return;
-    if (!window.confirm("Remove these hours? Existing bookings are kept.")) return;
+    if (!window.confirm("Remove these hours? Existing bookings are kept."))
+      return;
     setDeletingId(id);
     setError(null);
     try {
@@ -190,7 +197,7 @@ export default function ShopControls() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 p-4 md:p-6">
+    <div className="mx-auto w-full space-y-4 p-4 md:p-6">
       <div className="animate-enter">
         <h1 className="text-2xl font-bold tracking-tight">Shop Controls</h1>
         <p className="text-sm text-muted-foreground">
@@ -208,7 +215,9 @@ export default function ShopControls() {
       {notice && (
         <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
           <CircleCheck aria-hidden="true" />
-          <AlertDescription className="text-emerald-800">{notice}</AlertDescription>
+          <AlertDescription className="text-emerald-800">
+            {notice}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -296,7 +305,9 @@ export default function ShopControls() {
                         onBlur={() => {
                           const mins = parseInt(duration, 10);
                           if (duration && (!mins || mins < 5 || mins > 240))
-                            setError("Duration must be between 5 and 240 minutes.");
+                            setError(
+                              "Duration must be between 5 and 240 minutes.",
+                            );
                         }}
                         className="mt-1"
                       />
@@ -310,7 +321,10 @@ export default function ShopControls() {
                     </Button>
                   </div>
                   <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <Clock
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
                     Slot length sets the booking grid. Lunch break 12:30–1:30 PM
                     is always blocked.
                   </p>
@@ -341,10 +355,14 @@ export default function ShopControls() {
                     key={name}
                     className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-0"
                   >
-                    <span className="w-24 shrink-0 text-xs font-medium">{name}</span>
+                    <span className="w-24 shrink-0 text-xs font-medium">
+                      {name}
+                    </span>
                     <div className="flex flex-wrap justify-end gap-1">
                       {(grouped[idx] ?? []).length === 0 ? (
-                        <span className="text-xs text-muted-foreground">Closed</span>
+                        <span className="text-xs text-muted-foreground">
+                          Closed
+                        </span>
                       ) : (
                         (grouped[idx] ?? []).map((a) => (
                           <span
@@ -354,7 +372,9 @@ export default function ShopControls() {
                             {a.start_time}–{a.end_time}
                             <button
                               type="button"
-                              onClick={() => void handleDeleteAvailability(a.id)}
+                              onClick={() =>
+                                void handleDeleteAvailability(a.id)
+                              }
                               disabled={deletingId === a.id}
                               aria-label={`Remove hours ${a.start_time} to ${a.end_time} on ${name}`}
                               className="rounded p-0.5 text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-50"
@@ -414,7 +434,11 @@ export default function ShopControls() {
                     aria-label="End time"
                   />
                 </div>
-                <Button type="submit" size="sm" disabled={savingAvail || !service}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={savingAvail || !service}
+                >
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                   {savingAvail ? "Adding…" : "Add"}
                 </Button>
@@ -440,7 +464,10 @@ export default function ShopControls() {
               ) : (
                 <ol className="list-inside list-decimal space-y-1.5 text-sm text-slate-700">
                   {rules.map((rule) => (
-                    <li key={rule.id}>{rule.text}</li>
+                    <li key={rule.id}>
+                      <span className="font-semibold text-slate-900">{rule.title}</span>{" "}
+                      — {rule.text}
+                    </li>
                   ))}
                 </ol>
               )}

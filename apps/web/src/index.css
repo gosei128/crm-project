@@ -186,3 +186,36 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Leaflet map hardening: keep panes below app overlays, protect tiles from
+   Tailwind preflight's img reset, and style the brand pin (plain CSS so it
+   wins regardless of bundle import order). */
+.leaflet-container {
+  z-index: 0;
+  font: inherit;
+}
+.leaflet-container img {
+  max-width: none !important;
+}
+.kabarbers-pin {
+  background: transparent;
+  border: none;
+}
+.kabarbers-pin-dot {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 4px;
+  border-radius: 9999px;
+  background: #0d7680;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+  position: relative;
+}
+.kabarbers-pin-dot::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: 9999px;
+  border: 2px solid rgb(13 118 128 / 0.35);
+}

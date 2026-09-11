@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,9 +10,9 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CircleAlert, ExternalLink, Receipt } from "lucide-react";
-import { uploadPaymentProof, type Booking } from "@/lib/api";
+import { uploadPaymentProofFile, type Booking } from "@/lib/api";
 import { formatSlotRange } from "@/lib/format";
-import { isImageUrl } from "@/lib/media";
+import { PROOF_ACCEPT, isImageUrl, validateProofFile } from "@/lib/media";
 
 /**
  * Customer-facing dialog to add or update the GCash payment proof on a
@@ -32,20 +32,46 @@ export default function PaymentProofDialog({
   onClose: () => void;
   onSaved: (updated: Booking) => void;
 }) {
-  const [url, setUrl] = useState(booking?.payment_proof_url ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const editable = booking !== null && booking.status === "pending";
   const hasProof = !!booking?.payment_proof_url?.trim();
 
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = e.target.files?.[0] ?? null;
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(null);
+    setError(null);
+    if (!selected) {
+      setFile(null);
+      return;
+    }
+    const validationError = validateProofFile(selected);
+    if (validationError) {
+      setFile(null);
+      setError(validationError);
+      return;
+    }
+    setFile(selected);
+    setPreview(URL.createObjectURL(selected));
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!booking || !url.trim()) return;
+    if (!booking || !file) return;
     setSaving(true);
     setError(null);
     try {
-      const updated = await uploadPaymentProof(booking.id, url.trim());
+      const updated = await uploadPaymentProofFile(booking.id, file);
       onSaved(updated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -93,7 +119,7 @@ export default function PaymentProofDialog({
                 Your slot is held, not confirmed yet
               </p>
               <p className="mt-1 text-amber-700">
-                Send the downpayment via GCash, paste the screenshot link
+                Send the downpayment via GCash, upload a photo of the receipt
                 below, and the owner will confirm your booking. Pending
                 bookings expire 15 minutes after creation.
               </p>
@@ -149,20 +175,26 @@ export default function PaymentProofDialog({
           {editable && (
             <form onSubmit={(e) => void handleSave(e)} className="space-y-2">
               <div>
-                <Label htmlFor="proof-url" className="text-sm font-medium">
-                  {hasProof ? "Replace with a new link" : "GCash screenshot link"}
+                <Label htmlFor="proof-file" className="text-sm font-medium">
+                  {hasProof ? "Replace with a new photo" : "GCash receipt photo"}
                 </Label>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Paste a link to your GCash receipt (Google Drive, Imgur…)
+                  JPG, PNG, or WEBP · max 5 MB
                 </p>
                 <Input
-                  id="proof-url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://…"
-                  inputMode="url"
-                  className="mt-1.5"
+                  id="proof-file"
+                  type="file"
+                  accept={PROOF_ACCEPT}
+                  onChange={handleFileSelect}
+                  className="mt-1.5 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium"
                 />
+                {preview && (
+                  <img
+                    src={preview}
+                    alt="Selected GCash payment proof preview"
+                    className="mt-2 max-h-48 w-full rounded-lg border object-contain"
+                  />
+                )}
               </div>
 
               {error && (
@@ -179,7 +211,7 @@ export default function PaymentProofDialog({
                 <Button
                   type="submit"
                   className="flex-1 active:scale-[0.98]"
-                  disabled={saving || !url.trim()}
+                  disabled={saving || !file}
                 >
                   {saving
                     ? "Saving…"

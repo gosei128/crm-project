@@ -1,28 +1,59 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from app.config import settings
-from app.routers import auth, bookings, services, shop
+from app.routers import auth, bookings, facebook, services, shop
 
-# Shop rules — editable here, or sourced from DB/env later.
-# Built so the frontend can render them dynamically (PROJECT_CONTEXT.md §11).
+# Shop rules — official Kabarbers policy + operational lines.
+# Displayed to clients during booking (Book flow), on the public schedule
+# page, and previewed read-only in the owner Shop Controls.
+# `title` is rendered bold, `text` as the body, ordered by `order`.
 SHOP_RULES = [
-    {"id": 1, "text": "Strictly by appointment — no walk-ins accepted.", "order": 1},
-    {"id": 2, "text": "First come, first served.", "order": 2},
+    {
+        "id": 1,
+        "title": "BOOKING",
+        "text": "Strictly by appointment — no walk-ins accepted. First come, first served.",
+        "order": 1,
+    },
+    {
+        "id": 2,
+        "title": "DOWNPAYMENT",
+        "text": "Downpayment via GCash is required to confirm a booking — no downpayment, no appointment. All downpayments are non-refundable.",
+        "order": 2,
+    },
     {
         "id": 3,
-        "text": "Downpayment via GCash is required to confirm a booking — no downpayment, no appointment.",
+        "title": "LATE ARRIVAL",
+        "text": "If you are 15 minutes late, your appointment will be considered cancelled.",
         "order": 3,
     },
-    {"id": 4, "text": "All downpayments are non-refundable.", "order": 4},
+    {
+        "id": 4,
+        "title": "WAITING TIME",
+        "text": "If you arrive on time but the previous client's service is still ongoing, rest assured we will hold your spot. Please be patient as we prioritize quality work over speed.",
+        "order": 4,
+    },
     {
         "id": 5,
-        "text": "Please arrive on time. More than 15 minutes late voids the booking (no refund).",
+        "title": "NO SHOW",
+        "text": "If you do not show up for your appointment, your deposit will be forfeited.",
         "order": 5,
     },
-    {"id": 6, "text": "No-shows void the booking (no refund).", "order": 6},
-    {"id": 7, "text": "No bookings during lunch break (12:30 PM – 1:30 PM).", "order": 7},
+    {
+        "id": 6,
+        "title": "CONFIRMATION",
+        "text": "A booking confirmation will be shown to you once your appointment is finalized. Please present this confirmation to us upon check-in.",
+        "order": 6,
+    },
+    {
+        "id": 7,
+        "title": "LUNCH BREAK",
+        "text": "No bookings during lunch break (12:30 PM – 1:30 PM).",
+        "order": 7,
+    },
 ]
 
 
@@ -55,6 +86,15 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Kabarbers Booking API", lifespan=lifespan)
 
+# Local disk storage for GCash proof images — created at import so the
+# StaticFiles mount never fails on a fresh checkout. Served at /uploads
+# so stored payment_proof_url values render directly in <img> tags.
+_UPLOAD_DIR = Path(settings.upload_dir)
+if not _UPLOAD_DIR.is_absolute():
+    _UPLOAD_DIR = Path.cwd() / _UPLOAD_DIR
+_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_UPLOAD_DIR)), name="uploads")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -64,6 +104,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(facebook.router)
 app.include_router(bookings.router)
 app.include_router(services.router)
 app.include_router(shop.router)

@@ -56,7 +56,10 @@ export default function Bookings() {
 
   // Debounce text search (client-side; no backend `q` param in v1).
   useEffect(() => {
-    const t = setTimeout(() => setDeferredQuery(query.trim().toLowerCase()), 200);
+    const t = setTimeout(
+      () => setDeferredQuery(query.trim().toLowerCase()),
+      200,
+    );
     return () => clearTimeout(t);
   }, [query]);
 
@@ -116,7 +119,7 @@ export default function Bookings() {
     statusFilter !== "all" || dateFilter !== "" || query.trim() !== "";
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 p-4 md:p-6">
+    <div className="mx-auto w-full  space-y-4 p-4 md:p-6">
       <div className="flex animate-enter flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Bookings</h1>
@@ -205,13 +208,22 @@ export default function Bookings() {
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
+            <p
+              className="text-xs text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
               {loading
                 ? "Loading…"
                 : `${filtered.length} ${filtered.length === 1 ? "booking" : "bookings"}`}
             </p>
             {hasActiveFilters && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearFilters}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={clearFilters}
+              >
                 Clear filters
               </Button>
             )}

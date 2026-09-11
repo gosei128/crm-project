@@ -16,6 +16,7 @@ import {
   type Service,
   type DaySchedule,
 } from "@/lib/api";
+import { useAuth } from "@/lib/authContext";
 import PaymentProofDialog from "@/components/booking/PaymentProofDialog";
 
 /* ---------- helpers ---------- */
@@ -100,6 +101,7 @@ function isToday(dateStr: string): boolean {
 
 export default function CustomerDashboard() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [shopOpen, setShopOpen] = useState(true);
@@ -206,7 +208,7 @@ export default function CustomerDashboard() {
 
   /* --- handlers --- */
   function handleLogout() {
-    localStorage.removeItem("token");
+    logout();
     navigate("/");
   }
 

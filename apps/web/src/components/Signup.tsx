@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { signup, login } from "../lib/api";
+import { seedUser } from "../lib/currentUser";
+import { setToken } from "../lib/token";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -24,10 +26,11 @@ const Signup = ({ onSwitchToLogin }: SignupProps) => {
       await signup(email, password, name);
       // Single-shop: all signups are customers
       const data = await login(email, password);
-      localStorage.setItem("token", data.access_token);
+      setToken(data.access_token);
+      seedUser(data.user ?? null);
       navigate("/customer");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Signup failed");
     }
   }
   return (

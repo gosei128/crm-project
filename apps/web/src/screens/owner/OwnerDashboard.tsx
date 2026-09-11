@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  BadgeCheck,
-  CalendarDays,
-  CircleAlert,
-  Eye,
-  Receipt,
-  Store,
-} from "lucide-react";
+import { CircleAlert, Eye, Store } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -143,7 +136,7 @@ export default function OwnerDashboard() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 p-4 md:p-6">
+    <div className="mx-auto w-full  space-y-4 p-4 md:p-6">
       <div className="animate-enter">
         <h1 className="text-2xl font-bold tracking-tight">
           Good to see you, boss
@@ -186,7 +179,6 @@ export default function OwnerDashboard() {
               ? "No appointments"
               : `First at ${formatSlotTime(sortedToday[0].slot_start)}`
           }
-          icon={CalendarDays}
           loading={loading}
           onClick={() => navigate("/bookings")}
           actionHint="View today's bookings"
@@ -197,7 +189,6 @@ export default function OwnerDashboard() {
           sub={
             pending.length === 0 ? "All clear" : "Awaiting GCash confirmation"
           }
-          icon={Receipt}
           accent="amber"
           loading={loading}
           onClick={() => navigate("/bookings?status=pending")}
@@ -207,7 +198,6 @@ export default function OwnerDashboard() {
           label="Confirmed today"
           value={confirmedToday}
           sub="Booked slots"
-          icon={BadgeCheck}
           accent="blue"
           loading={loading}
           onClick={() => navigate("/bookings?status=booked")}
@@ -221,7 +211,6 @@ export default function OwnerDashboard() {
               ? "Nothing waiting"
               : "Oldest first — verify in GCash"
           }
-          icon={CircleAlert}
           accent={awaitingProof.length > 0 ? "rose" : "emerald"}
           loading={loading}
           onClick={() => navigate("/bookings?status=pending")}
@@ -245,7 +234,7 @@ export default function OwnerDashboard() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs"
+              className="h-7 bg-accent text-xs"
               onClick={() => navigate("/bookings?status=pending")}
             >
               View all

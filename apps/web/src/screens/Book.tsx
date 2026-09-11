@@ -14,12 +14,14 @@ import {
   getWeeklySchedule,
   createPublicBooking,
   createAuthenticatedBooking,
-  uploadPaymentProof,
+  uploadPaymentProofFile,
   type Service,
   type ShopRule,
   type Booking,
   type SlotInfo,
 } from "@/lib/api";
+import { getToken } from "@/lib/token";
+import { PROOF_ACCEPT, validateProofFile } from "@/lib/media";
 
 type Step = "datetime" | "info" | "rules" | "success";
 
@@ -110,9 +112,14 @@ export default function Book() {
   const [pax, setPax] = useState(1);
   const [notes, setNotes] = useState("");
 
+  // --- rules acknowledgement (required before confirming) ---
+  const [agreedToRules, setAgreedToRules] = useState(false);
+
   // --- result ---
   const [booking, setBooking] = useState<Booking | null>(null);
-  const [proofUrl, setProofUrl] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [proofError, setProofError] = useState<string | null>(null);
 
   // --- same-device resume (guest checkout has no booking lookup) ---
   const [stored, setStored] = useState<StoredBooking | null>(loadStoredBooking);
@@ -123,6 +130,39 @@ export default function Book() {
   useEffect(() => {
     stepRef.current = step;
   });
+
+  // Revoke the preview object URL when it changes or on unmount.
+  useEffect(() => {
+    return () => {
+      if (proofPreview) URL.revokeObjectURL(proofPreview);
+    };
+  }, [proofPreview]);
+
+  function clearProofSelection() {
+    if (proofPreview) URL.revokeObjectURL(proofPreview);
+    setProofFile(null);
+    setProofPreview(null);
+    setProofError(null);
+  }
+
+  function handleProofSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (proofPreview) URL.revokeObjectURL(proofPreview);
+    setProofPreview(null);
+    setProofError(null);
+    if (!file) {
+      setProofFile(null);
+      return;
+    }
+    const validationError = validateProofFile(file);
+    if (validationError) {
+      setProofFile(null);
+      setProofError(validationError);
+      return;
+    }
+    setProofFile(file);
+    setProofPreview(URL.createObjectURL(file));
+  }
 
   function persistStored(b: Booking) {
     try {
@@ -150,7 +190,7 @@ export default function Book() {
     setSelectedDate(stored.selectedDate);
     setSelectedSlot(stored.selectedSlot);
     setBooking(stored.booking);
-    setProofUrl("");
+    clearProofSelection();
     setError(null);
     setStep("success");
   }
@@ -218,6 +258,7 @@ export default function Book() {
       setError("Name and phone are required");
       return;
     }
+    setAgreedToRules(false);
     setStep("rules");
   }
 
@@ -226,7 +267,7 @@ export default function Book() {
     setLoading(true);
     setError(null);
     try {
-      const hasToken = !!localStorage.getItem("token");
+      const hasToken = getToken() !== null;
       const payload = {
         slot_start: selectedSlot,
         customer_name: customerName,
@@ -248,16 +289,17 @@ export default function Book() {
   }
 
   async function handlePaymentProof() {
-    if (!booking || !proofUrl.trim()) return;
+    if (!booking || !proofFile) return;
     setLoading(true);
     setError(null);
+    setProofError(null);
     try {
-      const updated = await uploadPaymentProof(booking.id, proofUrl);
+      const updated = await uploadPaymentProofFile(booking.id, proofFile);
       setBooking(updated);
       persistStored(updated);
-      setProofUrl("");
+      clearProofSelection();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setProofError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setLoading(false);
     }
@@ -527,12 +569,15 @@ export default function Book() {
             </CardHeader>
             <CardContent className="space-y-3">
               {shopRules.length > 0 ? (
-                <ol className="space-y-2 list-decimal list-inside text-sm">
-                  {shopRules
+                <ol className="space-y-3 list-decimal list-inside text-sm">
+                  {[...shopRules]
                     .sort((a, b) => a.order - b.order)
                     .map((rule) => (
                       <li key={rule.id} className="text-slate-700">
-                        {rule.text}
+                        <span className="font-semibold text-slate-900">
+                          {rule.title}
+                        </span>{" "}
+                        — {rule.text}
                       </li>
                     ))}
                 </ol>
@@ -541,6 +586,21 @@ export default function Book() {
               )}
 
               <Separator className="my-4" />
+
+              <div className="flex items-start gap-2.5 rounded-md border p-3">
+                <input
+                  id="agree-rules"
+                  type="checkbox"
+                  checked={agreedToRules}
+                  onChange={(e) => setAgreedToRules(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <Label htmlFor="agree-rules" className="text-sm font-normal leading-snug cursor-pointer">
+                  I have read and agree to the shop rules above, including the
+                  late-arrival, no-show deposit forfeiture, and check-in
+                  confirmation policies.
+                </Label>
+              </div>
 
               {/* booking summary — Google-style timestamp */}
               <div className="bg-slate-50 rounded-md p-3 text-sm space-y-1">
@@ -561,7 +621,12 @@ export default function Book() {
                 <Button variant="ghost" onClick={() => setStep("info")}>
                   ← Back
                 </Button>
-                <Button onClick={handleConfirm} disabled={loading} className="flex-1">
+                <Button
+                  onClick={handleConfirm}
+                  disabled={loading || !agreedToRules}
+                  className="flex-1"
+                  title={agreedToRules ? undefined : "Please agree to the shop rules first"}
+                >
                   {loading ? "Booking..." : "Confirm Booking"}
                 </Button>
               </div>
@@ -584,6 +649,21 @@ export default function Book() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+                <p className="font-semibold text-emerald-800">
+                  Booking confirmation — present this at check-in
+                </p>
+                <p className="mt-1 font-mono text-lg font-bold tracking-wide text-emerald-900 tabular-nums">
+                  {booking.id.slice(0, 8).toUpperCase()}
+                </p>
+                <p className="mt-1 text-emerald-700">
+                  {selectedDate} ·{" "}
+                  {selectedSlot
+                    ? formatSlotRange(selectedSlot, service?.duration_minutes)
+                    : ""}
+                </p>
+              </div>
+
               <div className="bg-yellow-50 border border-yellow-200 rounded-md px-4 py-3 text-sm">
                 <p className="font-medium text-yellow-800">⚠ Payment Required</p>
                 <p className="text-yellow-700 mt-1">
@@ -620,25 +700,37 @@ export default function Book() {
 
               {/* proof upload */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Upload Payment Proof URL</Label>
+                <Label htmlFor="proof-file" className="text-sm font-medium">Upload Payment Proof</Label>
                 <p className="text-xs text-muted-foreground">
-                  Paste a link to your GCash screenshot (e.g. Google Drive, Imgur)
+                  Choose a photo of your GCash receipt (JPG, PNG, or WEBP · max 5 MB)
                 </p>
                 <div className="flex gap-2">
                   <Input
-                    value={proofUrl}
-                    onChange={(e) => setProofUrl(e.target.value)}
-                    placeholder="https://..."
-                    disabled={booking.downpayment_status === "confirmed"}
+                    id="proof-file"
+                    type="file"
+                    accept={PROOF_ACCEPT}
+                    onChange={handleProofSelect}
+                    disabled={loading || booking.downpayment_status === "confirmed"}
+                    className="cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium"
                   />
                   <Button
                     onClick={handlePaymentProof}
-                    disabled={loading || !proofUrl.trim() || booking.downpayment_status === "confirmed"}
+                    disabled={loading || !proofFile || booking.downpayment_status === "confirmed"}
                     variant="outline"
                   >
-                    Upload
+                    {loading ? "Uploading…" : "Upload"}
                   </Button>
                 </div>
+                {proofPreview && (
+                  <img
+                    src={proofPreview}
+                    alt="Selected GCash payment proof preview"
+                    className="max-h-48 w-full rounded-lg border object-contain"
+                  />
+                )}
+                {proofError && (
+                  <p className="text-xs text-red-600">{proofError}</p>
+                )}
                 {booking.payment_proof_url && (
                   <p className="text-xs text-green-700">
                     ✓ Proof uploaded — awaiting owner verification.
@@ -662,7 +754,8 @@ export default function Book() {
                     setCustomerPhone("");
                     setPax(1);
                     setNotes("");
-                    setProofUrl("");
+                    clearProofSelection();
+                    setAgreedToRules(false);
                   }}
                 >
                   Book Another

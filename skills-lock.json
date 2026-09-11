@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
       "computedHash": "3f1e66e08e3d1d3feaf2a3187705022812e0bece8ff5bee80fe7cf782f26fe8b"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "6b526d013e28073246a36f99b529bc43745d30832ecfa8217b359c34f260ca6b"
     }
   }
 }

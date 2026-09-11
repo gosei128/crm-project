@@ -109,3 +109,16 @@ class BookingPaymentProof(BaseModel):
         if not v or not v.strip():
             raise ValueError("payment_proof_url is required")
         return v.strip()
+
+
+class BookingClaim(BaseModel):
+    """Customer claims an anonymous booking by proving the booking phone number."""
+
+    customer_phone: str
+
+    @field_validator("customer_phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("customer_phone is required")
+        return v.strip()

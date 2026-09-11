@@ -9,6 +9,13 @@ venv/
 apps/*/.env
 apps/**/.env
 
+# Local database dumps (may contain customer PII — never commit)
+backup_*.sql
+apps/api/app/backup_*.sql
+
+# Uploaded GCash proof images (customer PII — never commit)
+apps/api/uploads/
+
 # IDE
 .idea/
 

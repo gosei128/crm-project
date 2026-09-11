@@ -1,0 +1,289 @@
+"""RBAC matrix: roles, ownership, claim flow, strict separation."""
+from datetime import date, datetime, time, timedelta
+
+OWNER_EMAIL = "owner@kabarbers.local"
+OWNER_PW = "ownerpass123"
+
+
+def _login(client, email, password):
+    r = client.post("/auth/login", data={"username": email, "password": password})
+    assert r.status_code == 200, r.text
+    return r.json()["access_token"]
+
+
+def _owner_token(client):
+    r = client.post(
+        "/auth/bootstrap-owner",
+        json={"email": OWNER_EMAIL, "password": OWNER_PW, "name": "Owner"},
+    )
+    assert r.status_code == 201, r.text
+    return _login(client, OWNER_EMAIL, OWNER_PW)
+
+
+def _customer_token(client, email, name="Customer"):
+    r = client.post(
+        "/auth/signup",
+        json={"email": email, "password": "password123", "name": name},
+    )
+    assert r.status_code == 201, r.text
+    return _login(client, email, "password123")
+
+
+def _setup_service(client, owner_token):
+    r = client.post(
+        "/services/",
+        json={"name": "Haircut", "duration_minutes": 30, "description": "cut"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert r.status_code == 201, r.text
+    service_id = r.json()["id"]
+    tomorrow = date.today() + timedelta(days=1)
+    r = client.post(
+        f"/services/{service_id}/availability",
+        json={
+            "day_of_week": tomorrow.weekday(),
+            "start_time": "10:00",
+            "end_time": "12:00",
+        },
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert r.status_code == 201, r.text
+    slot = datetime.combine(tomorrow, time(10, 0)).isoformat()
+    return service_id, slot
+
+
+def _auth_header(token):
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+# ---------- role enforcement ----------
+
+
+def test_public_signup_always_customer_even_if_owner_requested(client):
+    r = client.post(
+        "/auth/signup",
+        json={
+            "email": "sneaky@example.com",
+            "password": "password123",
+            "name": "Sneaky",
+            "role": "owner",
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["role"] == "customer"
+
+
+def test_customer_forbidden_from_owner_routes(client):
+    owner = _owner_token(client)
+    _setup_service(client, owner)
+    customer = _customer_token(client, "cust@example.com")
+    h = _auth_header(customer)
+
+    assert client.get("/bookings/all", headers=h).status_code == 403
+    assert (
+        client.patch("/shop/status", json={"is_open": False}, headers=h).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/services/",
+            json={"name": "X", "duration_minutes": 30, "description": "x"},
+            headers=h,
+        ).status_code
+        == 403
+    )
+
+
+def test_owner_forbidden_from_customer_routes(client):
+    owner = _owner_token(client)
+    _setup_service(client, owner)
+    h = _auth_header(owner)
+
+    assert client.get("/bookings/me", headers=h).status_code == 403
+    assert (
+        client.post(
+            "/bookings/authenticated",
+            json={
+                "slot_start": "2030-01-01T10:00:00",
+                "customer_name": "O",
+                "customer_phone": "09170000000",
+            },
+            headers=h,
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/bookings/",
+            json={"slot_start": "2030-01-01T10:00:00"},
+            headers=h,
+        ).status_code
+        == 403
+    )
+
+
+def test_owner_blocked_from_public_booking_flow(client):
+    owner = _owner_token(client)
+    _setup_service(client, owner)
+    tomorrow = date.today() + timedelta(days=2)
+    # availability only exists for tomorrow(+1); use public flow rejection before slot checks:
+    # owner is rejected by role guard regardless of slot validity.
+    r = client.post(
+        "/bookings/public",
+        json={
+            "slot_start": datetime.combine(tomorrow, time(10, 0)).isoformat(),
+            "customer_name": "Owner",
+            "customer_phone": "09170000000",
+        },
+        headers=_auth_header(owner),
+    )
+    assert r.status_code == 403
+
+
+def test_unauthenticated_cannot_reach_protected_routes(client):
+    assert client.get("/bookings/me").status_code == 401
+    assert client.get("/bookings/all").status_code == 401
+
+
+# ---------- ownership ----------
+
+
+def test_booking_detail_ownership(client):
+    owner = _owner_token(client)
+    _, slot = _setup_service(client, owner)
+    cust_a = _customer_token(client, "a@example.com", "A")
+    cust_b = _customer_token(client, "b@example.com", "B")
+
+    r = client.post(
+        "/bookings/authenticated",
+        json={
+            "slot_start": slot,
+            "customer_name": "A",
+            "customer_phone": "09170000001",
+        },
+        headers=_auth_header(cust_a),
+    )
+    assert r.status_code == 201, r.text
+    booking_id = r.json()["id"]
+
+    # owner sees all
+    assert (
+        client.get(f"/bookings/{booking_id}", headers=_auth_header(owner)).status_code
+        == 200
+    )
+    # owning customer sees own
+    assert (
+        client.get(f"/bookings/{booking_id}", headers=_auth_header(cust_a)).status_code
+        == 200
+    )
+    # other customer forbidden
+    assert (
+        client.get(f"/bookings/{booking_id}", headers=_auth_header(cust_b)).status_code
+        == 403
+    )
+    # anonymous unauthenticated
+    assert client.get(f"/bookings/{booking_id}").status_code == 401
+
+
+def test_payment_proof_requires_login_and_ownership_then_claim(client):
+    owner = _owner_token(client)
+    _, slot = _setup_service(client, owner)
+
+    # anonymous public booking
+    r = client.post(
+        "/bookings/public",
+        json={
+            "slot_start": slot,
+            "customer_name": "Guest",
+            "customer_phone": "09170000002",
+        },
+    )
+    assert r.status_code == 201, r.text
+    booking_id = r.json()["id"]
+    assert r.json()["customer_id"] is None
+
+    # unauthenticated proof upload -> 401
+    assert (
+        client.post(
+            f"/bookings/{booking_id}/payment-proof",
+            json={"payment_proof_url": "https://x/y.png"},
+        ).status_code
+        == 401
+    )
+
+    cust_b = _customer_token(client, "b2@example.com", "B")
+    # wrong account (unrelated customer) -> 403
+    assert (
+        client.post(
+            f"/bookings/{booking_id}/payment-proof",
+            json={"payment_proof_url": "https://x/y.png"},
+            headers=_auth_header(cust_b),
+        ).status_code
+        == 403
+    )
+
+    # claim with wrong phone -> 403
+    assert (
+        client.post(
+            f"/bookings/{booking_id}/claim",
+            json={"customer_phone": "09998887777"},
+            headers=_auth_header(cust_b),
+        ).status_code
+        == 403
+    )
+
+    # claim with correct phone -> 200 and linked
+    r = client.post(
+        f"/bookings/{booking_id}/claim",
+        json={"customer_phone": "09170000002"},
+        headers=_auth_header(cust_b),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["customer_id"] is not None
+
+    # now proof upload works
+    r = client.post(
+        f"/bookings/{booking_id}/payment-proof",
+        json={"payment_proof_url": "https://x/y.png"},
+        headers=_auth_header(cust_b),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["payment_proof_url"] == "https://x/y.png"
+
+
+def test_claim_phone_normalization_plus63_vs_09(client):
+    owner = _owner_token(client)
+    _setup_service(client, owner)
+    # second slot at 10:30 for this booking
+    tomorrow = date.today() + timedelta(days=1)
+    slot2 = datetime.combine(tomorrow, time(10, 30)).isoformat()
+
+    r = client.post(
+        "/bookings/public",
+        json={
+            "slot_start": slot2,
+            "customer_name": "Guest",
+            "customer_phone": "+639171234567",
+        },
+    )
+    assert r.status_code == 201, r.text
+    booking_id = r.json()["id"]
+
+    cust = _customer_token(client, "c3@example.com", "C")
+    r = client.post(
+        f"/bookings/{booking_id}/claim",
+        json={"customer_phone": "09171234567"},
+        headers=_auth_header(cust),
+    )
+    assert r.status_code == 200, r.text
+
+
+def test_require_role_rejects_unknown_roles():
+    from app.core.dependency import require_role
+
+    try:
+        require_role("superadmin")
+    except ValueError as e:
+        assert "Unknown role" in str(e)
+    else:  # pragma: no cover
+        raise AssertionError("require_role should reject unknown roles")

@@ -1,8 +1,12 @@
-from fastapi import HTTPException, status, APIRouter, Depends, Query
+from fastapi import HTTPException, status, APIRouter, Depends, Query, File, UploadFile, Request
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta, time
 from typing import Optional
+from pathlib import Path
+import re
 import uuid
+
+from app.config import settings
 
 from app.models.booking import Booking, BookingStatus, BLOCKING_STATUSES
 from app.models.service import Service
@@ -11,16 +15,37 @@ from app.models.user import User
 from app.schemas.booking import (
     BookingCreate,
     BookingCreatePublic,
+    BookingClaim,
     BookingRead,
     BookingStatusPatch,
     BookingPaymentProof,
 )
 from app.services import booking_service
-from app.core.dependency import get_current_user, require_owner
+from app.core.dependency import (
+    get_current_user,
+    get_optional_user,
+    require_customer,
+    require_owner,
+)
 from app.database import get_db
 from app.routers.shop import is_shop_open
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
+
+
+def _normalize_phone(phone: str | None) -> str:
+    """Normalize PH phone numbers so +63... and 09... compare equal."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 12 and digits.startswith("63"):
+        digits = "0" + digits[2:]
+    return digits
+
+
+def _can_access_booking(booking: Booking, user: User) -> bool:
+    """Owners see all; customers see only bookings linked to their account."""
+    if user.role == "owner":
+        return True
+    return booking.customer_id is not None and booking.customer_id == user.id
 
 
 # ---------- Public / client-facing ----------
@@ -41,8 +66,17 @@ def get_available_slot(
 @router.post(
     "/public", response_model=BookingRead, status_code=status.HTTP_201_CREATED
 )
-def create_public_booking(data: BookingCreatePublic, db: Session = Depends(get_db)):
+def create_public_booking(
+    data: BookingCreatePublic,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
     """Create a booking without requiring login (client-facing). Single-haircut defaults."""
+    if current_user is not None and current_user.role == "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owners cannot use the public booking flow. Manage bookings from the dashboard.",
+        )
     if not is_shop_open(db):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -57,6 +91,9 @@ def create_public_booking(data: BookingCreatePublic, db: Session = Depends(get_d
             db,
             service_id=svc_id,
             slot_start=data.slot_start,
+            customer_id=current_user.id
+            if current_user is not None and current_user.role == "customer"
+            else None,
             customer_name=data.customer_name,
             customer_phone=data.customer_phone,
             pax=data.pax,
@@ -70,7 +107,7 @@ def create_public_booking(data: BookingCreatePublic, db: Session = Depends(get_d
 @router.post(
     "/authenticated", response_model=BookingRead, status_code=status.HTTP_201_CREATED
 )
-def create_authenticated_booking(data: BookingCreatePublic, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_authenticated_booking(data: BookingCreatePublic, current_user: User = Depends(require_customer), db: Session = Depends(get_db)):
     """Authenticated customer booking — links booking to account."""
     if not is_shop_open(db):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shop is currently closed. Bookings are not being accepted.")
@@ -186,19 +223,95 @@ def get_weekly_schedule(
 
 
 @router.post(
+    "/{booking_id}/claim",
+    response_model=BookingRead,
+)
+def claim_booking(
+    booking_id: str,
+    data: BookingClaim,
+    current_user: User = Depends(require_customer),
+    db: Session = Depends(get_db),
+):
+    """Link an anonymous (no-login) booking to the caller's account via phone match."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
+        )
+    if booking.customer_id is not None:
+        if booking.customer_id == current_user.id:
+            return booking
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This booking already belongs to another account.",
+        )
+    if _normalize_phone(booking.customer_phone) != _normalize_phone(data.customer_phone):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Phone number does not match this booking.",
+        )
+    booking.customer_id = current_user.id
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
+@router.post(
     "/{booking_id}/payment-proof",
     response_model=BookingRead,
 )
 def upload_payment_proof(
     booking_id: str,
     data: BookingPaymentProof,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Client uploads GCash payment proof URL (no auth required)."""
+    """Upload GCash payment proof URL (login required; owners or owning customer only)."""
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if booking is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
+        )
+    _check_proof_access(booking, current_user)
+
+    from app.models.booking import DownpaymentStatus
+
+    booking.payment_proof_url = data.payment_proof_url
+    booking.downpayment_status = DownpaymentStatus.PENDING_VERIFICATION.value
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
+# ---------- Payment proof image upload (multipart file) ----------
+
+# JPG / PNG / WEBP only (per product decision — no GIF/BMP).
+_ALLOWED_PROOF_TYPES: dict[str, str] = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+
+
+def _upload_dir() -> Path:
+    d = Path(settings.upload_dir)
+    if not d.is_absolute():
+        d = Path.cwd() / d
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _check_proof_access(booking: Booking, current_user: User) -> None:
+    """Shared auth + status guard for both proof endpoints (URL and file)."""
+    if not _can_access_booking(booking, current_user):
+        if booking.customer_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This booking is not linked to an account yet. Log in and claim it first.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only manage your own bookings.",
         )
     if booking.status != BookingStatus.PENDING.value:
         raise HTTPException(
@@ -206,9 +319,82 @@ def upload_payment_proof(
             detail=f"Booking is '{booking.status}', not pending — cannot upload proof",
         )
 
+
+def _delete_local_proof_file(old_url: str | None, upload_dir: Path) -> None:
+    """Remove a previously uploaded local file (ignores external URLs)."""
+    if not old_url or "/uploads/" not in old_url:
+        return
+    try:
+        filename = old_url.rsplit("/uploads/", 1)[1].split("?", 1)[0].split("#", 1)[0]
+        # Guard against path traversal stored in the DB.
+        if not filename or "/" in filename or "\\" in filename or ".." in filename:
+            return
+        (upload_dir / filename).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+@router.post(
+    "/{booking_id}/payment-proof-file",
+    response_model=BookingRead,
+)
+async def upload_payment_proof_file(
+    booking_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload a GCash proof image file (JPG/PNG/WEBP, login required).
+
+    Stores the file on local disk under ``settings.upload_dir`` and saves
+    its absolute URL in ``booking.payment_proof_url`` so existing owner
+    views render it directly. Replaces any previous local upload file.
+    """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
+        )
+    _check_proof_access(booking, current_user)
+
+    ext = _ALLOWED_PROOF_TYPES.get((file.content_type or "").lower())
+    if ext is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPG, PNG, or WEBP images are allowed.",
+        )
+
+    contents = await file.read()
+    max_bytes = settings.max_proof_mb * 1024 * 1024
+    if not contents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+    if len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Image must be {settings.max_proof_mb} MB or smaller.",
+        )
+
+    upload_dir = _upload_dir()
+    filename = f"{booking_id}-{uuid.uuid4().hex[:8]}{ext}"
+    try:
+        (upload_dir / filename).write_bytes(contents)
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save the uploaded image. Please try again.",
+        )
+    finally:
+        await file.close()
+
     from app.models.booking import DownpaymentStatus
 
-    booking.payment_proof_url = data.payment_proof_url
+    _delete_local_proof_file(booking.payment_proof_url, upload_dir)
+    base = str(request.base_url).rstrip("/")
+    booking.payment_proof_url = f"{base}/uploads/{filename}"
     booking.downpayment_status = DownpaymentStatus.PENDING_VERIFICATION.value
     db.commit()
     db.refresh(booking)
@@ -223,10 +409,10 @@ def upload_payment_proof(
 )
 def create_bookings(
     data: BookingCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_customer),
     db: Session = Depends(get_db),
 ):
-    """Authenticated flow (owner or logged-in customer creates a booking)."""
+    """Authenticated customer flow — links the booking to the caller's account."""
     try:
         svc_id = data.service_id or booking_service.resolve_service_id(db, None)
         if not svc_id:
@@ -248,7 +434,7 @@ def create_bookings(
 
 @router.get("/me", response_model=list[BookingRead])
 def my_bookings(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: User = Depends(require_customer), db: Session = Depends(get_db)
 ):
     return db.query(Booking).filter(Booking.customer_id == current_user.id).all()
 
@@ -293,12 +479,23 @@ def owner_list_bookings(
 @router.get("/{booking_id}", response_model=BookingRead)
 def get_booking(
     booking_id: str,
-    current_user: User = Depends(require_owner),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Booking detail — owners see all, customers only their own (claim first if anonymous)."""
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if booking is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Booking not found")
+    if not _can_access_booking(booking, current_user):
+        if booking.customer_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This booking is not linked to an account yet. Log in and claim it first.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own bookings.",
+        )
     return booking
 
 

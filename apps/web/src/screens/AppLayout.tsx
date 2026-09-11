@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { getShopStatus, ownerListBookings } from "@/lib/api";
+import { useAuth } from "@/lib/authContext";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -87,11 +88,12 @@ function OwnerSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const { isMobile, setOpenMobile } = useSidebar();
+  const { logout } = useAuth();
 
   function handleLogout() {
     if (!window.confirm("Log out of the owner workspace?")) return;
     if (isMobile) setOpenMobile(false);
-    localStorage.removeItem("token");
+    logout();
     navigate("/");
   }
 
