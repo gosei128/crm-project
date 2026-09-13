@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import PublicNav, { NavSentinel } from "@/components/public/PublicNav";
+import PublicFooter from "@/components/public/PublicFooter";
 import {
   getWeeklySchedule,
   getShopStatus,
@@ -51,7 +53,7 @@ function formatWeekRange(monday: Date): string {
   sunday.setDate(monday.getDate() + 6);
   const fmt = (d: Date) =>
     d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return `${fmt(monday)} – ${fmt(sunday)}, ${monday.getFullYear()}`;
+  return `${fmt(monday)} - ${fmt(sunday)}, ${monday.getFullYear()}`;
 }
 
 function formatSlotTime(iso: string): string {
@@ -156,24 +158,26 @@ export default function Schedule() {
     : days[0];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex justify-center pt-8 px-4 pb-16">
-      <div className="w-full max-w-6xl space-y-6">
+    <div className="min-h-[100dvh] bg-zinc-950 text-zinc-100">
+      <PublicNav />
+      <NavSentinel />
+      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 pt-24 pb-16">
         {/* Header — shop name + live clock */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              <Button variant="link" onClick={() => navigate("/customer")}>
-                <ChevronLeft className="w-6 h-6 text-primary" />
-              </Button>
+            <p className="text-xs font-bold tracking-[0.2em] text-orange-500 uppercase">
+              Live availability
+            </p>
+            <h1 className="font-display mt-1 text-3xl tracking-wide uppercase sm:text-4xl">
               {shopStatus?.shop_name ?? "Kabarbers"}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Weekly schedule — see what&apos;s available and book your slot
+            <p className="text-sm text-zinc-400 mt-1">
+              Weekly schedule. See what is available and book your slot.
             </p>
           </div>
           <div className="flex flex-col items-start sm:items-end gap-1">
-            <div className="flex items-center gap-1.5 text-sm font-medium">
-              <Clock className="w-4 h-4 text-muted-foreground" />
+            <div className="flex items-center gap-1.5 text-sm font-medium text-zinc-200">
+              <Clock className="w-4 h-4 text-zinc-500" />
               {now.toLocaleDateString("en-US", {
                 weekday: "long",
                 year: "numeric",
@@ -181,7 +185,7 @@ export default function Schedule() {
                 day: "numeric",
               })}
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-zinc-500">
               {now.toLocaleTimeString("en-US", {
                 hour: "numeric",
                 minute: "2-digit",
@@ -194,14 +198,14 @@ export default function Schedule() {
 
         {/* Shop closed banner */}
         {!isShopOpen && (
-          <Card className="border-red-200 bg-red-50">
+          <Card className="border-red-900/60 bg-red-950/50">
             <CardContent className="flex items-center gap-3 py-4">
-              <Lock className="w-6 h-6 text-red-600 shrink-0" />
+              <Lock className="w-6 h-6 text-red-400 shrink-0" />
               <div>
-                <p className="font-semibold text-red-700">
+                <p className="font-semibold text-red-200">
                   Shop is currently closed
                 </p>
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-red-300/80">
                   We are not accepting new bookings at this time. Existing
                   appointments are still honored.
                 </p>
@@ -211,24 +215,25 @@ export default function Schedule() {
         )}
 
         {/* Week navigation */}
-        <Card>
+        <Card className="border-white/10 bg-zinc-900/80">
           <CardContent className="flex items-center justify-between py-3">
             <Button
               variant="outline"
               size="icon"
               onClick={prevWeek}
               aria-label="Previous week"
+              className="border-white/15 bg-transparent text-zinc-200 hover:bg-white/10 hover:text-white"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <div className="text-center">
-              <p className="font-medium text-sm">
+              <p className="font-medium text-sm text-white">
                 {formatWeekRange(weekStart)}
               </p>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs h-5 mt-0.5"
+                className="text-xs h-5 mt-0.5 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
                 onClick={() => {
                   const d = getMonday(new Date());
                   setWeekStart(d);
@@ -243,6 +248,7 @@ export default function Schedule() {
               size="icon"
               onClick={nextWeek}
               aria-label="Next week"
+              className="border-white/15 bg-transparent text-zinc-200 hover:bg-white/10 hover:text-white"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -251,15 +257,15 @@ export default function Schedule() {
 
         {/* Error banner */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md px-4 py-2 text-sm text-red-700">
+          <div className="bg-red-950/60 border border-red-900/60 rounded-md px-4 py-2 text-sm text-red-200">
             {error}
           </div>
         )}
 
         {/* Loading */}
         {loading && (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          <Card className="border-white/10 bg-zinc-900/80">
+            <CardContent className="py-8 text-center text-sm text-zinc-400">
               Loading schedule...
             </CardContent>
           </Card>
@@ -267,8 +273,8 @@ export default function Schedule() {
 
         {/* Empty state */}
         {!loading && days.length === 0 && (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          <Card className="border-white/10 bg-zinc-900/80">
+            <CardContent className="py-8 text-center text-sm text-zinc-400">
               No schedule available. The shop has no active services configured.
             </CardContent>
           </Card>
@@ -280,15 +286,15 @@ export default function Schedule() {
             {/* Desktop grid: 7 columns */}
             <div className="hidden md:grid grid-cols-7 gap-3">
               {days.map((day) => (
-                <Card key={day.date} className="flex flex-col">
+                <Card key={day.date} className="flex flex-col border-white/10 bg-zinc-900/80">
                   <CardHeader className="pb-2 pt-3">
-                    <CardTitle className="text-xs font-semibold text-center">
+                    <CardTitle className="text-xs font-semibold text-center text-zinc-200">
                       {formatDayHeader(day.date)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 pt-0 space-y-1.5">
                     {day.slots.length === 0 ? (
-                      <p className="text-xs text-muted-foreground text-center py-4">
+                      <p className="text-xs text-zinc-500 text-center py-4">
                         Closed
                       </p>
                     ) : (
@@ -303,10 +309,10 @@ export default function Schedule() {
                           className={`w-full text-xs font-medium rounded-md px-2 py-1.5 text-center transition-colors
                             ${
                               !isShopOpen
-                                ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                                ? "bg-white/5 text-zinc-600 border border-white/10 cursor-not-allowed"
                                 : slot.status === "available"
-                                  ? "bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 cursor-pointer"
-                                  : "bg-red-50 text-red-700 border border-red-200 cursor-not-allowed"
+                                  ? "bg-orange-500/10 text-orange-200 border border-orange-500/30 hover:bg-orange-500/25 hover:border-orange-500/60 cursor-pointer"
+                                  : "bg-white/[0.03] text-zinc-600 border border-white/5 cursor-not-allowed"
                             }
                           `}
                         >
@@ -315,8 +321,8 @@ export default function Schedule() {
                             variant="outline"
                             className={`ml-1 text-[10px] h-3 px-1 border-0 ${
                               slot.status === "available"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
+                                ? "bg-orange-500/20 text-orange-300"
+                                : "bg-white/5 text-zinc-600"
                             }`}
                           >
                             {slot.status === "available" ? "free" : "booked"}
@@ -336,11 +342,11 @@ export default function Schedule() {
                   <button
                     key={day.date}
                     onClick={() => setSelectedDay(day.date)}
-                    className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-medium transition-colors
+                    className={`shrink-0 min-h-11 rounded-lg border px-3 py-2 text-xs font-medium transition-colors
                       ${
                         (selectedDay ?? days[0]?.date) === day.date
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-card border-border text-foreground"
+                          ? "bg-accent-deep text-white border-accent-deep"
+                          : "bg-zinc-900 border-white/10 text-zinc-300"
                       }
                     `}
                   >
@@ -354,16 +360,16 @@ export default function Schedule() {
                 ))}
               </div>
               {mobileDay && (
-                <Card>
+                <Card className="border-white/10 bg-zinc-900/80">
                   <CardHeader className="pb-2 pt-3">
-                    <CardTitle className="text-sm">
+                    <CardTitle className="text-sm text-white">
                       {formatDayHeader(mobileDay.date)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-1.5">
                     {mobileDay.slots.length === 0 ? (
-                      <p className="text-xs text-muted-foreground text-center py-4">
-                        Closed — no availability
+                      <p className="text-xs text-zinc-500 text-center py-4">
+                        Closed today
                       </p>
                     ) : (
                       mobileDay.slots.map((slot) => (
@@ -374,13 +380,13 @@ export default function Schedule() {
                               handleSlotClick(slot.time, mobileDay.date);
                           }}
                           disabled={slot.status !== "available" || !isShopOpen}
-                          className={`w-full text-xs font-medium rounded-md px-3 py-2 flex items-center justify-between transition-colors
+                          className={`w-full min-h-11 text-xs font-medium rounded-md px-3 py-2 flex items-center justify-between transition-colors
                             ${
                               !isShopOpen
-                                ? "bg-slate-100 text-slate-400 border border-slate-200"
+                                ? "bg-white/5 text-zinc-600 border border-white/10"
                                 : slot.status === "available"
-                                  ? "bg-green-50 text-green-700 border border-green-200 hover:bg-green-100"
-                                  : "bg-red-50 text-red-700 border border-red-200"
+                                  ? "bg-orange-500/10 text-orange-100 border border-orange-500/30 hover:bg-orange-500/25"
+                                  : "bg-white/[0.03] text-zinc-600 border border-white/5"
                             }
                           `}
                         >
@@ -389,8 +395,8 @@ export default function Schedule() {
                             variant="outline"
                             className={`text-[10px] border-0 ${
                               slot.status === "available"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
+                                ? "bg-orange-500/20 text-orange-300"
+                                : "bg-white/5 text-zinc-600"
                             }`}
                           >
                             {slot.status === "available"
@@ -408,10 +414,10 @@ export default function Schedule() {
         )}
 
         {/* Find us */}
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden border-white/10 bg-zinc-900/80">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <MapPin className="h-4 w-4 text-accent" aria-hidden="true" />
+            <CardTitle className="flex items-center gap-2 text-sm text-white">
+              <MapPin className="h-4 w-4 text-orange-400" aria-hidden="true" />
               Find us
             </CardTitle>
           </CardHeader>
@@ -429,12 +435,12 @@ export default function Schedule() {
           <CardContent className="space-y-3">
             <div className="flex items-start gap-2 text-sm">
               <MapPin
-                className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+                className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500"
                 aria-hidden="true"
               />
               <div>
-                <p className="font-medium">{SHOP_LOCATION.name}</p>
-                <p className="text-muted-foreground">
+                <p className="font-medium text-white">{SHOP_LOCATION.name}</p>
+                <p className="text-zinc-400">
                   {shopAddressSingleLine()}
                 </p>
               </div>
@@ -442,6 +448,7 @@ export default function Schedule() {
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
+                className="bg-accent-deep font-semibold text-white hover:bg-orange-500"
                 render={
                   <a
                     href={shopDirectionsUrl()}
@@ -456,6 +463,7 @@ export default function Schedule() {
               <Button
                 size="sm"
                 variant="outline"
+                className="border-white/15 bg-transparent text-zinc-200 hover:bg-white/10 hover:text-white"
                 render={
                   <a
                     href={shopOsmUrl()}
@@ -472,16 +480,16 @@ export default function Schedule() {
 
         {/* Shop rules */}
         {rules.length > 0 && (
-          <Card>
+          <Card className="border-white/10 bg-zinc-900/80">
             <CardHeader>
-              <CardTitle className="text-sm">Shop Rules</CardTitle>
+              <CardTitle className="text-sm text-white">Shop Rules</CardTitle>
             </CardHeader>
             <CardContent>
-              <ol className="space-y-1.5 list-decimal list-inside text-sm text-slate-700">
+              <ol className="space-y-1.5 list-decimal list-inside text-sm text-zinc-300">
                 {rules.map((rule) => (
                   <li key={rule.id}>
-                    <span className="font-semibold text-slate-900">{rule.title}</span>{" "}
-                    — {rule.text}
+                    <span className="font-semibold text-white">{rule.title}</span>:{" "}
+                    {rule.text}
                   </li>
                 ))}
               </ol>
@@ -491,15 +499,20 @@ export default function Schedule() {
 
         {!loading && days.length > 0 && (
           <>
-            <Separator />
-            <div className="flex justify-center">
-              <Button onClick={() => navigate("/book")} size="lg">
-                Book Now
+            <Separator className="bg-white/10" />
+            <div className="flex justify-center pb-4">
+              <Button
+                onClick={() => navigate("/book")}
+                size="lg"
+                className="bg-accent-deep px-10 font-bold whitespace-nowrap text-white hover:bg-orange-500"
+              >
+                Book Appointment
               </Button>
             </div>
           </>
         )}
       </div>
+      <PublicFooter />
     </div>
   );
 }

@@ -94,7 +94,7 @@ function OwnerSidebar({
     if (!window.confirm("Log out of the owner workspace?")) return;
     if (isMobile) setOpenMobile(false);
     logout();
-    navigate("/");
+    navigate("/login");
   }
 
   const isActive = (url: string) =>
@@ -110,7 +110,7 @@ function OwnerSidebar({
             navigate("/dashboard");
           }}
           className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors duration-200 hover:bg-sidebar-accent"
-          aria-label="Kabarbers owner workspace — go to dashboard"
+          aria-label="Kabarbers owner workspace. Go to dashboard"
         >
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
             <Scissors className="h-4 w-4" aria-hidden="true" />
@@ -251,8 +251,8 @@ const AppLayout = () => {
               role="status"
               title={
                 shopOpen
-                  ? "Shop is open — accepting new bookings"
-                  : "Shop is closed — bookings paused"
+                  ? "Shop is open. Accepting new bookings"
+                  : "Shop is closed. Bookings paused"
               }
             >
               <span

@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/authContext";
 export function AuthLoading() {
   return (
     <main
-      className="flex h-screen w-full items-center justify-center"
+      className="flex min-h-[100dvh] w-full items-center justify-center"
       aria-label="Loading"
       aria-busy="true"
     >
@@ -34,45 +34,17 @@ function renderGuard({
   return allowed ? <>{children}</> : <>{fallback}</>;
 }
 
-/** Any authenticated user. Unauthenticated → login. */
-export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, isLoading } = useAuth();
-  return renderGuard({
-    isLoading,
-    allowed: user !== null,
-    fallback: <Navigate to="/" replace />,
-    children,
-  });
-}
-
 /**
- * Owner workspace. Customers are sent to their dashboard (strict
- * separation), unauthenticated users to login.
+ * Owner/admin workspace. Only the owner role is allowed — everyone else
+ * (including customer-role accounts and guests) goes to the owner login,
+ * which itself rejects non-owner credentials.
  */
 export function RequireOwner({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
   return renderGuard({
     isLoading,
     allowed: user?.role === "owner",
-    fallback: (
-      <Navigate to={user !== null ? "/customer" : "/"} replace />
-    ),
-    children,
-  });
-}
-
-/**
- * Customer area. Owners are sent to the owner dashboard (strict
- * separation), unauthenticated users to login.
- */
-export function RequireCustomer({ children }: { children: ReactNode }) {
-  const { user, isLoading } = useAuth();
-  return renderGuard({
-    isLoading,
-    allowed: user?.role === "customer",
-    fallback: (
-      <Navigate to={user !== null ? "/dashboard" : "/"} replace />
-    ),
+    fallback: <Navigate to="/login" replace />,
     children,
   });
 }

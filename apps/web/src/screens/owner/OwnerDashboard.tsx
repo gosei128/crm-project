@@ -159,7 +159,7 @@ export default function OwnerDashboard() {
           <Store aria-hidden="true" />
           <AlertTitle>Shop is closed</AlertTitle>
           <AlertDescription className="text-amber-800">
-            New bookings are paused — existing appointments are still honored.{" "}
+            New bookings are paused. Existing appointments are still honored.{" "}
             <button
               className="font-medium underline underline-offset-2"
               onClick={() => navigate("/controls")}
@@ -209,7 +209,7 @@ export default function OwnerDashboard() {
           sub={
             awaitingProof.length === 0
               ? "Nothing waiting"
-              : "Oldest first — verify in GCash"
+              : "Oldest first. Verify in GCash"
           }
           accent={awaitingProof.length > 0 ? "rose" : "emerald"}
           loading={loading}
@@ -234,7 +234,7 @@ export default function OwnerDashboard() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 bg-accent text-xs"
+              className="h-7 bg-accent-deep text-xs text-white hover:bg-orange-500"
               onClick={() => navigate("/bookings?status=pending")}
             >
               View all
@@ -251,7 +251,7 @@ export default function OwnerDashboard() {
             <p className="py-4 text-center text-sm text-muted-foreground">
               {pending.length === 0
                 ? "No pending payments. New bookings will show up here."
-                : "No proofs uploaded yet — pending bookings expire 15 minutes after creation."}
+                : "No proofs uploaded yet. Pending bookings expire 15 minutes after creation."}
             </p>
           ) : (
             awaitingProof.slice(0, 5).map((b) => (

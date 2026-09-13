@@ -13,15 +13,15 @@ import {
   getShopRules,
   getWeeklySchedule,
   createPublicBooking,
-  createAuthenticatedBooking,
   uploadPaymentProofFile,
   type Service,
   type ShopRule,
   type Booking,
   type SlotInfo,
 } from "@/lib/api";
-import { getToken } from "@/lib/token";
 import { PROOF_ACCEPT, validateProofFile } from "@/lib/media";
+import PublicNav, { NavSentinel } from "@/components/public/PublicNav";
+import PublicFooter from "@/components/public/PublicFooter";
 
 type Step = "datetime" | "info" | "rules" | "success";
 
@@ -43,7 +43,7 @@ function formatSlotRange(slot: string, durationMinutes?: number) {
   const start = new Date(slot);
   const end = durationMinutes ? new Date(start.getTime() + durationMinutes * 60000) : null;
   const fmt = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-  return end ? `${fmt(start)} – ${fmt(end)}` : fmt(start);
+  return end ? `${fmt(start)} - ${fmt(end)}` : fmt(start);
 }
 
 function getStatusBadge(status: string) {
@@ -267,17 +267,15 @@ export default function Book() {
     setLoading(true);
     setError(null);
     try {
-      const hasToken = getToken() !== null;
-      const payload = {
+      // Guest-only booking — no account needed. Returning guests pick up
+      // unfinished bookings on this device via the stored-booking banner.
+      const result = await createPublicBooking({
         slot_start: selectedSlot,
         customer_name: customerName,
         customer_phone: customerPhone,
         pax,
         notes: notes || undefined,
-      };
-      const result = hasToken
-        ? await createAuthenticatedBooking(payload)
-        : await createPublicBooking(payload);
+      });
       setBooking(result);
       persistStored(result);
       setStep("success");
@@ -316,49 +314,54 @@ export default function Book() {
   const bookedCount = daySlots.filter((s) => s.status === "booked").length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-start justify-center pt-8 px-4 pb-16">
-      <div className="w-full max-w-lg space-y-4">
+    <div className="min-h-[100dvh] bg-zinc-950 text-zinc-100">
+      <PublicNav />
+      <NavSentinel />
+      <div className="mx-auto w-full max-w-lg space-y-4 px-4 pt-24 pb-16">
         {/* header */}
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Kabarbers Booking</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {service ? `${service.name} — ${service.duration_minutes} min · Strictly by appointment` : "Book your appointment online"}
+          <p className="text-xs font-bold tracking-[0.2em] text-orange-500 uppercase">
+            Kabarbers
+          </p>
+          <h1 className="font-display mt-1 text-3xl tracking-wide uppercase">Book your cut</h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            {service ? `${service.name}, ${service.duration_minutes} min. Strictly by appointment` : "Book your appointment online"}
           </p>
         </div>
 
         {/* progress indicator */}
-        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center justify-center gap-2 text-xs text-zinc-500">
           {(["datetime", "info", "rules", "success"] as Step[]).map((s, i) => (
             <div key={s} className="flex items-center gap-1">
               <span className={`w-6 h-6 rounded-full flex items-center justify-center font-medium
-                ${step === s ? "bg-primary text-primary-foreground" : "bg-slate-200 text-slate-500"}`}>
+                ${step === s ? "bg-accent-deep text-white" : "bg-white/10 text-zinc-400"}`}>
                 {i + 1}
               </span>
-              {i < 3 && <span className="w-4 h-px bg-slate-300" />}
+              {i < 3 && <span className="w-4 h-px bg-white/15" />}
             </div>
           ))}
         </div>
 
         {/* error banner */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md px-4 py-2 text-sm text-red-700">
+          <div className="bg-red-950/60 border border-red-900/60 rounded-md px-4 py-2 text-sm text-red-200">
             {error}
           </div>
         )}
 
         {/* resume banner — left before uploading proof? pick up where you left off */}
         {stored && step !== "success" && (
-          <Card className="border-amber-200 bg-amber-50">
+          <Card className="border-amber-500/40 bg-amber-500/10">
             <CardContent className="flex flex-wrap items-center gap-3 py-3">
-              <span className="rounded-lg bg-amber-100 p-2 text-amber-700">
+              <span className="rounded-lg bg-amber-500/20 p-2 text-amber-300">
                 <History className="h-4 w-4" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-amber-900">
+                <p className="text-sm font-medium text-amber-100">
                   Unfinished booking found
                 </p>
-                <p className="truncate text-xs text-amber-700 tabular-nums">
-                  {stored.customerName} · {stored.selectedDate} ·{" "}
+                <p className="truncate text-xs text-amber-200/70 tabular-nums">
+                  {stored.customerName}, {stored.selectedDate} at{" "}
                   {formatSlotRange(stored.selectedSlot, service?.duration_minutes)}
                 </p>
               </div>
@@ -366,12 +369,12 @@ export default function Book() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 text-xs text-amber-800"
+                  className="h-7 text-xs text-amber-200 hover:bg-amber-500/10 hover:text-amber-100"
                   onClick={handleDiscardStored}
                 >
                   Dismiss
                 </Button>
-                <Button size="sm" className="h-7 text-xs" onClick={handleResumeBooking}>
+                <Button size="sm" className="h-7 bg-accent-deep text-xs whitespace-nowrap text-white hover:bg-orange-500" onClick={handleResumeBooking}>
                   Continue payment
                 </Button>
               </div>
@@ -381,11 +384,11 @@ export default function Book() {
 
         {/* ── STEP 1: Date & Slot ─────────────────────── */}
         {step === "datetime" && (
-          <Card>
+          <Card className="border-white/10 bg-zinc-900/80 text-zinc-100">
             <CardHeader>
               <CardTitle>Pick a Date & Time</CardTitle>
               <CardDescription>
-                {service?.name} — {service?.duration_minutes} min · Times in 12-hour format
+                {service?.name}, {service?.duration_minutes} min. Times in 12-hour format
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -419,29 +422,29 @@ export default function Book() {
               {/* Google-style time slots — booked + available */}
               {selectedDate && (
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-sm font-medium">Available Times</Label>
-                    {daySlots.length > 0 && (
-                      <span className="text-[11px] text-muted-foreground">
-                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {availableCount} free</span>
-                        <span className="mx-1.5">·</span>
-                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500" /> {bookedCount} booked</span>
-                      </span>
-                    )}
-                  </div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium">Available Times</Label>
+                      {daySlots.length > 0 && (
+                        <span className="text-[11px] text-zinc-400">
+                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" /> {availableCount} free</span>
+                          <span className="mx-1.5">·</span>
+                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-zinc-600" /> {bookedCount} booked</span>
+                        </span>
+                      )}
+                    </div>
 
-                  {loading ? (
-                    <div className="space-y-2">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="h-[56px] bg-slate-100 rounded-lg animate-pulse" />
-                      ))}
-                    </div>
-                  ) : daySlots.length === 0 ? (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
-                      <p className="text-sm text-muted-foreground">No slots for this date — shop is closed.</p>
-                      <p className="text-xs text-muted-foreground mt-1">Try another date or check the weekly schedule.</p>
-                    </div>
-                  ) : (
+                    {loading ? (
+                      <div className="space-y-2">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <div key={i} className="h-[56px] bg-white/5 rounded-lg animate-pulse" />
+                        ))}
+                      </div>
+                    ) : daySlots.length === 0 ? (
+                      <div className="rounded-lg border border-white/10 bg-white/[0.03] p-6 text-center">
+                        <p className="text-sm text-zinc-300">No slots for this date. The shop is closed.</p>
+                        <p className="text-xs text-zinc-500 mt-1">Try another date or check the weekly schedule.</p>
+                      </div>
+                    ) : (
                     <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
                       {/* Google Calendar-like vertical timeline */}
                       {daySlots.map((slot) => {
@@ -452,42 +455,42 @@ export default function Book() {
                             key={slot.time}
                             onClick={() => isAvailable && handleSlotSelect(slot.time)}
                             disabled={!isAvailable}
-                            className={`w-full text-left rounded-lg border-l-[3px] px-3 py-2.5 flex items-center justify-between gap-3 transition-all
+                            className={`w-full min-h-11 text-left rounded-lg border-l-[3px] px-3 py-2.5 flex items-center justify-between gap-3 transition-all
                               ${isSelected
-                                ? "bg-primary text-primary-foreground border-l-primary shadow"
+                                ? "bg-accent-deep text-white border-l-orange-300 shadow-lg shadow-orange-950/40"
                                 : isAvailable
-                                  ? "bg-white border-slate-200 border-l-emerald-500 hover:bg-emerald-50 hover:border-emerald-200 shadow-sm"
-                                  : "bg-slate-50 border-slate-200 border-l-rose-400 opacity-75 cursor-not-allowed"
+                                  ? "bg-white/5 border-white/10 border-l-orange-500 hover:bg-orange-500/15 hover:border-orange-500/40"
+                                  : "bg-white/[0.02] border-white/5 border-l-zinc-700 opacity-70 cursor-not-allowed"
                               }`}
                           >
                             <div className="flex-1 min-w-0">
-                              <div className={`text-sm font-medium tabular-nums flex items-center gap-1.5 ${isSelected ? "text-primary-foreground" : isAvailable ? "text-slate-900" : "text-slate-500"}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isAvailable ? "bg-emerald-500" : "bg-rose-500"} ${isSelected ? "bg-white" : ""}`} />
+                              <div className={`text-sm font-medium tabular-nums flex items-center gap-1.5 ${isSelected ? "text-white" : isAvailable ? "text-zinc-100" : "text-zinc-500"}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isAvailable ? "bg-orange-500" : "bg-zinc-600"} ${isSelected ? "bg-white" : ""}`} />
                                 {formatSlotRange(slot.time, service?.duration_minutes)}
                               </div>
-                              <div className={`text-[11px] mt-0.5 ${isSelected ? "text-primary-foreground/80" : isAvailable ? "text-emerald-700" : "text-rose-600"}`}>
+                              <div className={`text-[11px] mt-0.5 ${isSelected ? "text-white/80" : isAvailable ? "text-orange-300/80" : "text-zinc-600"}`}>
                                 {isAvailable ? `Available • ${service?.duration_minutes} min` : "Booked • unavailable"}
                               </div>
                             </div>
                             <div className="shrink-0 flex flex-col items-end gap-1">
                               <Badge
                                 variant="outline"
-                                className={`text-[10px] h-5 border-0 ${isSelected ? "bg-white/20 text-white" : isAvailable ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}
+                                className={`text-[10px] h-5 border-0 ${isSelected ? "bg-white/20 text-white" : isAvailable ? "bg-orange-500/20 text-orange-300" : "bg-white/5 text-zinc-600"}`}
                               >
                                 {isAvailable ? "FREE" : "BOOKED"}
                               </Badge>
-                              {isAvailable && !isSelected && <span className="text-[11px] text-emerald-600 font-medium">Tap to select →</span>}
+                              {isAvailable && !isSelected && <span className="text-[11px] text-orange-400 font-medium">Tap to select →</span>}
                             </div>
                           </button>
                         );
                       })}
                     </div>
                   )}
-                  <p className="text-[11px] text-muted-foreground mt-2">Times shown like Google Calendar · 12-hour format · Green = free, Red = booked</p>
+                  <p className="text-[11px] text-zinc-500 mt-2">Orange means free. Tap a time to continue. Gray means booked.</p>
                 </div>
               )}
 
-              <Button variant="ghost" onClick={() => navigate("/schedule")} className="mt-2">
+              <Button variant="ghost" onClick={() => navigate("/schedule")} className="mt-2 text-zinc-300 hover:bg-white/10 hover:text-white">
                 ← View weekly schedule
               </Button>
             </CardContent>
@@ -496,7 +499,7 @@ export default function Book() {
 
         {/* ── STEP 2: Customer Info ───────────────────── */}
         {step === "info" && (
-          <Card>
+          <Card className="border-white/10 bg-zinc-900/80 text-zinc-100">
             <CardHeader>
               <CardTitle>Your Details</CardTitle>
               <CardDescription>We just need your name and phone number.</CardDescription>
@@ -548,10 +551,10 @@ export default function Book() {
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button type="button" variant="ghost" onClick={() => setStep("datetime")}>
+                  <Button type="button" variant="ghost" onClick={() => setStep("datetime")} className="text-zinc-300 hover:bg-white/10 hover:text-white">
                     ← Back
                   </Button>
-                  <Button type="submit" className="flex-1">
+                  <Button type="submit" className="flex-1 bg-accent-deep font-semibold whitespace-nowrap text-white hover:bg-orange-500">
                     Review Rules
                   </Button>
                 </div>
@@ -562,7 +565,7 @@ export default function Book() {
 
         {/* ── STEP 3: Shop Rules ─────────────────────── */}
         {step === "rules" && (
-          <Card>
+          <Card className="border-white/10 bg-zinc-900/80 text-zinc-100">
             <CardHeader>
               <CardTitle>Shop Rules & Policies</CardTitle>
               <CardDescription>Please read before confirming your booking.</CardDescription>
@@ -573,21 +576,21 @@ export default function Book() {
                   {[...shopRules]
                     .sort((a, b) => a.order - b.order)
                     .map((rule) => (
-                      <li key={rule.id} className="text-slate-700">
-                        <span className="font-semibold text-slate-900">
+                      <li key={rule.id} className="text-zinc-300">
+                        <span className="font-semibold text-white">
                           {rule.title}
-                        </span>{" "}
-                        — {rule.text}
+                        </span>:{" "}
+                        {rule.text}
                       </li>
                     ))}
                 </ol>
               ) : (
-                <p className="text-sm text-muted-foreground">No rules configured yet.</p>
+                <p className="text-sm text-zinc-500">No rules configured yet.</p>
               )}
 
-              <Separator className="my-4" />
+              <Separator className="my-4 bg-white/10" />
 
-              <div className="flex items-start gap-2.5 rounded-md border p-3">
+              <div className="flex items-start gap-2.5 rounded-md border border-white/10 bg-white/[0.03] p-3">
                 <input
                   id="agree-rules"
                   type="checkbox"
@@ -603,28 +606,28 @@ export default function Book() {
               </div>
 
               {/* booking summary — Google-style timestamp */}
-              <div className="bg-slate-50 rounded-md p-3 text-sm space-y-1">
-                <div className="font-medium">Booking Summary</div>
-                <div className="text-muted-foreground">
+              <div className="bg-white/[0.03] border border-white/10 rounded-md p-3 text-sm space-y-1">
+                <div className="font-medium text-white">Booking Summary</div>
+                <div className="text-zinc-400">
                   {service?.name} · {service?.duration_minutes} min
                 </div>
-                <div className="text-muted-foreground tabular-nums">
+                <div className="text-zinc-400 tabular-nums">
                   {selectedDate} · {selectedSlot ? formatSlotRange(selectedSlot, service?.duration_minutes) : ""}
                 </div>
-                <div className="text-muted-foreground">
+                <div className="text-zinc-400">
                   {pax} {pax === 1 ? "person" : "people"} · {customerName}
                 </div>
-                {notes && <div className="text-muted-foreground italic">Note: {notes}</div>}
+                {notes && <div className="text-zinc-500 italic">Note: {notes}</div>}
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button variant="ghost" onClick={() => setStep("info")}>
+                <Button variant="ghost" onClick={() => setStep("info")} className="text-zinc-300 hover:bg-white/10 hover:text-white">
                   ← Back
                 </Button>
                 <Button
                   onClick={handleConfirm}
                   disabled={loading || !agreedToRules}
-                  className="flex-1"
+                  className="flex-1 bg-accent-deep font-semibold whitespace-nowrap text-white hover:bg-orange-500 disabled:opacity-50"
                   title={agreedToRules ? undefined : "Please agree to the shop rules first"}
                 >
                   {loading ? "Booking..." : "Confirm Booking"}
@@ -636,7 +639,7 @@ export default function Book() {
 
         {/* ── STEP 4: Success / Payment ───────────────── */}
         {step === "success" && booking && (
-          <Card>
+          <Card className="border-white/10 bg-zinc-900/80 text-zinc-100">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <span>Booking Confirmed</span>
@@ -649,14 +652,14 @@ export default function Book() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
-                <p className="font-semibold text-emerald-800">
-                  Booking confirmation — present this at check-in
+              <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm">
+                <p className="font-semibold text-emerald-200">
+                  Booking confirmation. Present this at check-in
                 </p>
-                <p className="mt-1 font-mono text-lg font-bold tracking-wide text-emerald-900 tabular-nums">
+                <p className="mt-1 font-mono text-lg font-bold tracking-wide text-emerald-100 tabular-nums">
                   {booking.id.slice(0, 8).toUpperCase()}
                 </p>
-                <p className="mt-1 text-emerald-700">
+                <p className="mt-1 text-emerald-200/80">
                   {selectedDate} ·{" "}
                   {selectedSlot
                     ? formatSlotRange(selectedSlot, service?.duration_minutes)
@@ -664,9 +667,9 @@ export default function Book() {
                 </p>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md px-4 py-3 text-sm">
-                <p className="font-medium text-yellow-800">⚠ Payment Required</p>
-                <p className="text-yellow-700 mt-1">
+              <div className="bg-amber-500/10 border border-amber-500/40 rounded-md px-4 py-3 text-sm">
+                <p className="font-medium text-amber-200">⚠ Payment Required</p>
+                <p className="text-amber-200/80 mt-1">
                   Your booking is pending. Please send a downpayment via GCash and upload
                   your proof of payment below. Your booking will expire in 15 minutes
                   if payment is not confirmed.
@@ -675,33 +678,33 @@ export default function Book() {
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Service</span>
-                  <span className="font-medium">{service?.name}</span>
+                  <span className="text-zinc-500">Service</span>
+                  <span className="font-medium text-zinc-100">{service?.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Date & Time</span>
-                  <span className="font-medium tabular-nums">
+                  <span className="text-zinc-500">Date & Time</span>
+                  <span className="font-medium text-zinc-100 tabular-nums">
                     {selectedDate} · {selectedSlot ? formatSlotRange(selectedSlot, service?.duration_minutes) : ""}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Pax</span>
-                  <span className="font-medium">{booking.pax}</span>
+                  <span className="text-zinc-500">Pax</span>
+                  <span className="font-medium text-zinc-100">{booking.pax}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Payment Status</span>
-                  <Badge variant="outline" className="capitalize">
+                  <span className="text-zinc-500">Payment Status</span>
+                  <Badge variant="outline" className="capitalize border-white/15 text-zinc-200">
                     {booking.downpayment_status.replace("_", " ")}
                   </Badge>
                 </div>
               </div>
 
-              <Separator />
+              <Separator className="bg-white/10" />
 
               {/* proof upload */}
               <div className="space-y-2">
                 <Label htmlFor="proof-file" className="text-sm font-medium">Upload Payment Proof</Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-zinc-500">
                   Choose a photo of your GCash receipt (JPG, PNG, or WEBP · max 5 MB)
                 </p>
                 <div className="flex gap-2">
@@ -711,12 +714,13 @@ export default function Book() {
                     accept={PROOF_ACCEPT}
                     onChange={handleProofSelect}
                     disabled={loading || booking.downpayment_status === "confirmed"}
-                    className="cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium"
+                    className="cursor-pointer border-white/15 bg-white/5 text-zinc-200 file:mr-3 file:rounded file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-zinc-100"
                   />
                   <Button
                     onClick={handlePaymentProof}
                     disabled={loading || !proofFile || booking.downpayment_status === "confirmed"}
                     variant="outline"
+                    className="border-white/15 text-zinc-100 hover:bg-white/10 hover:text-white"
                   >
                     {loading ? "Uploading…" : "Upload"}
                   </Button>
@@ -725,25 +729,26 @@ export default function Book() {
                   <img
                     src={proofPreview}
                     alt="Selected GCash payment proof preview"
-                    className="max-h-48 w-full rounded-lg border object-contain"
+                    className="max-h-48 w-full rounded-lg border border-white/10 object-contain"
                   />
                 )}
                 {proofError && (
-                  <p className="text-xs text-red-600">{proofError}</p>
+                  <p className="text-xs text-red-400">{proofError}</p>
                 )}
                 {booking.payment_proof_url && (
-                  <p className="text-xs text-green-700">
-                    ✓ Proof uploaded — awaiting owner verification.
+                  <p className="text-xs text-emerald-300">
+                    ✓ Proof uploaded. Awaiting owner verification.
                   </p>
                 )}
               </div>
 
               <div className="flex gap-2 justify-center pt-2">
-                <Button variant="outline" onClick={() => navigate("/customer")}>
-                  View My Bookings
+                <Button variant="outline" onClick={() => navigate("/")} className="border-white/15 text-zinc-100 hover:bg-white/10 hover:text-white">
+                  Back to home
                 </Button>
                 <Button
                   variant="ghost"
+                  className="text-zinc-400 hover:bg-white/10 hover:text-white"
                   onClick={() => {
                     handleDiscardStored();
                     setStep("datetime");
@@ -764,7 +769,11 @@ export default function Book() {
             </CardContent>
           </Card>
         )}
+        <p className="text-center text-xs text-zinc-600">
+          Downpayment required to confirm · No downpayment, no appointment
+        </p>
       </div>
+      <PublicFooter />
     </div>
   );
 }

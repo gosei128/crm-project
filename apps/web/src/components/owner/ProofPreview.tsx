@@ -45,7 +45,7 @@ export default function ProofPreview({
       <SheetContent side="right" className="w-full sm:max-w-md">
         <SheetHeader className="text-left">
           <SheetTitle className="flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-accent" aria-hidden="true" />
+            <Receipt className="h-4 w-4 text-accent-deep" aria-hidden="true" />
             Payment proof
           </SheetTitle>
           <SheetDescription>
@@ -64,12 +64,12 @@ export default function ProofPreview({
             <dl className="grid grid-cols-2 gap-2 rounded-lg bg-muted/50 p-3 text-xs">
               <div>
                 <dt className="text-muted-foreground">Customer</dt>
-                <dd className="mt-0.5 font-medium">{booking.customer_name ?? "—"}</dd>
+                <dd className="mt-0.5 font-medium">{booking.customer_name ?? "Not given"}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Phone</dt>
                 <dd className="mt-0.5 font-medium tabular-nums">
-                  {booking.customer_phone ?? "—"}
+                    {booking.customer_phone ?? "Not given"}
                 </dd>
               </div>
               <div>

@@ -1,17 +1,12 @@
 import { Suspense, lazy } from "react";
 import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
 import LoginScreen from "./screens/Login";
-import FacebookFinish from "./screens/FacebookFinish";
+import Landing from "./screens/Landing";
 import AppLayout from "./screens/AppLayout";
 import Book from "./screens/Book";
 import Schedule from "./screens/Schedule";
-import CustomerDashboard from "./screens/CustomerDashboard";
 import { AuthProvider } from "./lib/auth";
-import {
-  AuthLoading,
-  RequireCustomer,
-  RequireOwner,
-} from "./components/auth/Guards";
+import { AuthLoading, RequireOwner } from "./components/auth/Guards";
 
 // Owner workspace is code-split so customer/public visitors never download
 // it (vercel-react-best-practices: bundle-dynamic-imports, bundle-conditional).
@@ -33,22 +28,19 @@ function App() {
       <Router>
         <Routes>
           {/* Public client-facing pages — no login required */}
+          <Route path="/" element={<Landing />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/book" element={<Book />} />
+          <Route path="/login" element={<LoginScreen />} />
 
-          {/* Customer area — strict separation: owners redirect to /dashboard */}
-          <Route
-            path="/customer"
-            element={
-              <RequireCustomer>
-                <CustomerDashboard />
-              </RequireCustomer>
-            }
-          />
+          {/* Owner login — the only login on the site (admin) */}
+          <Route path="/login" element={<LoginScreen />} />
 
-          {/* Owner / admin area — strict separation: customers redirect to /customer */}
-          <Route path="/" element={<LoginScreen />} />
-          <Route path="/auth/facebook/finish" element={<FacebookFinish />} />
+          {/* Legacy customer area (removed — booking needs no account).
+              Old bookmarks/phones land on the homepage. */}
+          <Route path="/customer" element={<Navigate to="/" replace />} />
+
+          {/* Owner / admin area */}
           <Route
             element={
               <RequireOwner>
@@ -83,6 +75,9 @@ function App() {
             {/* Legacy routes: single-haircut shop merged into Shop Controls */}
             <Route path="/services" element={<Navigate to="/controls" replace />} />
           </Route>
+
+          {/* Unknown paths fall back to the public landing */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </AuthProvider>

@@ -2,12 +2,14 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource/lato";
+@import "@fontsource/anton";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Lato", sans-serif;
+  --font-display: "Anton", "Oswald", "Arial Narrow", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -27,6 +29,7 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -61,7 +64,13 @@
   --secondary-foreground: #1a1c1e;
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: #0d7680;
+  /* Brand orange, two tiers (color lock: these are the ONLY oranges).
+     - --accent (vivid #ea580c): display type, icons, borders, dots. Never
+       behind body-size text (white on vivid is ~3.4:1, fails AA).
+     - --accent-deep (#c2410c): every button or badge that carries text.
+       White on deep is ~5.2:1, passes AA. */
+  --accent: #ea580c;
+  --accent-deep: #c2410c;
   --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
@@ -96,7 +105,8 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --accent: #ea580c;
+  --accent-deep: #c2410c;
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
@@ -136,6 +146,10 @@
   }
 }
 
+/* SHAPE SYSTEM (lock): surfaces rounded-2xl (16px), controls rounded-xl
+   and below (10px via --radius scale), badges/chips fully pill. No mixing
+   without a documented rule. */
+
 /* Minimal enter animation: opacity + translate only (150-250ms, ease-out).
    Stagger via .animate-enter-1/2/3. Respects prefers-reduced-motion below. */
 @keyframes owner-enter {
@@ -150,6 +164,10 @@
 }
 
 @layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: 0.01em;
+  }
   .animate-enter {
     animation: owner-enter 220ms ease-out both;
   }
@@ -171,11 +189,40 @@
   }
 }
 
+/* Scroll reveal (progressive enhancement): rises as a section enters the
+   viewport. Unsupported browsers ignore animation-timeline and render the
+   final state. Honors prefers-reduced-motion via the block below. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    animation: rise-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 55%;
+  }
+  .reveal-1 {
+    animation: rise-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-timeline: view();
+    animation-range: entry 10% entry 65%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-enter,
   .animate-enter-1,
   .animate-enter-2,
-  .animate-enter-3 {
+  .animate-enter-3,
+  .reveal,
+  .reveal-1 {
     animation: none;
   }
   *,
@@ -185,6 +232,21 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Lenis smooth scroll (landing only): required base styles. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
 }
 
 /* Leaflet map hardening: keep panes below app overlays, protect tiles from
@@ -207,7 +269,7 @@
   height: 28px;
   margin: 4px;
   border-radius: 9999px;
-  background: #0d7680;
+  background: #ea580c;
   border: 3px solid #fff;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
   position: relative;
@@ -217,5 +279,5 @@
   position: absolute;
   inset: -10px;
   border-radius: 9999px;
-  border: 2px solid rgb(13 118 128 / 0.35);
+  border: 2px solid rgb(234 88 12 / 0.35);
 }

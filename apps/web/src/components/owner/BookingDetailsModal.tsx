@@ -124,11 +124,11 @@ export default function BookingDetailsModal({
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <DetailRow icon={User} label="Customer">
-                  {booking.customer_name ?? "—"}
+                  {booking.customer_name ?? "Not given"}
                 </DetailRow>
                 <DetailRow icon={Phone} label="Phone">
                   <span className="tabular-nums">
-                    {booking.customer_phone ?? "—"}
+                    {booking.customer_phone ?? "Not given"}
                   </span>
                 </DetailRow>
                 <DetailRow icon={Users} label="Party size">
@@ -223,7 +223,7 @@ export default function BookingDetailsModal({
                     }
                   >
                     {booking.status === "pending"
-                      ? "No proof uploaded yet — confirm payment only after verifying GCash."
+                      ? "No proof uploaded yet. Confirm payment only after verifying GCash."
                       : "No proof was attached to this booking."}
                   </p>
                 )}

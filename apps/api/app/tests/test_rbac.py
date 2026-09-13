@@ -185,7 +185,8 @@ def test_booking_detail_ownership(client):
     assert client.get(f"/bookings/{booking_id}").status_code == 401
 
 
-def test_payment_proof_requires_login_and_ownership_then_claim(client):
+def test_guest_proof_upload_allowed_then_claim_flow(client):
+    """Guest holder-of-the-UUID can upload proof; linked bookings still need the owner."""
     owner = _owner_token(client)
     _, slot = _setup_service(client, owner)
 
@@ -202,20 +203,33 @@ def test_payment_proof_requires_login_and_ownership_then_claim(client):
     booking_id = r.json()["id"]
     assert r.json()["customer_id"] is None
 
-    # unauthenticated proof upload -> 401
-    assert (
-        client.post(
-            f"/bookings/{booking_id}/payment-proof",
-            json={"payment_proof_url": "https://x/y.png"},
-        ).status_code
-        == 401
+    # guest (no login) uploads proof to own unlinked pending booking -> 200
+    r = client.post(
+        f"/bookings/{booking_id}/payment-proof",
+        json={"payment_proof_url": "https://x/y.png"},
     )
+    assert r.status_code == 200, r.text
+    assert r.json()["payment_proof_url"] == "https://x/y.png"
+
+    # second booking for the claim flow (first slot is taken)
+    tomorrow = date.today() + timedelta(days=1)
+    slot2 = datetime.combine(tomorrow, time(10, 30)).isoformat()
+    r = client.post(
+        "/bookings/public",
+        json={
+            "slot_start": slot2,
+            "customer_name": "Guest2",
+            "customer_phone": "09170000003",
+        },
+    )
+    assert r.status_code == 201, r.text
+    booking2_id = r.json()["id"]
 
     cust_b = _customer_token(client, "b2@example.com", "B")
     # wrong account (unrelated customer) -> 403
     assert (
         client.post(
-            f"/bookings/{booking_id}/payment-proof",
+            f"/bookings/{booking2_id}/payment-proof",
             json={"payment_proof_url": "https://x/y.png"},
             headers=_auth_header(cust_b),
         ).status_code
@@ -225,7 +239,7 @@ def test_payment_proof_requires_login_and_ownership_then_claim(client):
     # claim with wrong phone -> 403
     assert (
         client.post(
-            f"/bookings/{booking_id}/claim",
+            f"/bookings/{booking2_id}/claim",
             json={"customer_phone": "09998887777"},
             headers=_auth_header(cust_b),
         ).status_code
@@ -234,21 +248,107 @@ def test_payment_proof_requires_login_and_ownership_then_claim(client):
 
     # claim with correct phone -> 200 and linked
     r = client.post(
-        f"/bookings/{booking_id}/claim",
-        json={"customer_phone": "09170000002"},
+        f"/bookings/{booking2_id}/claim",
+        json={"customer_phone": "09170000003"},
         headers=_auth_header(cust_b),
     )
     assert r.status_code == 200, r.text
     assert r.json()["customer_id"] is not None
 
-    # now proof upload works
+    # now proof upload works for the owning customer
     r = client.post(
-        f"/bookings/{booking_id}/payment-proof",
+        f"/bookings/{booking2_id}/payment-proof",
         json={"payment_proof_url": "https://x/y.png"},
         headers=_auth_header(cust_b),
     )
     assert r.status_code == 200, r.text
     assert r.json()["payment_proof_url"] == "https://x/y.png"
+
+    # guest (no login) can no longer touch the linked booking -> 403
+    assert (
+        client.post(
+            f"/bookings/{booking2_id}/payment-proof",
+            json={"payment_proof_url": "https://x/evil.png"},
+        ).status_code
+        == 403
+    )
+
+
+def test_guest_proof_file_upload_unlinked_pending_then_locked_once_booked(
+    client, tmp_path, monkeypatch
+):
+    """Multipart guest upload works fresh, and is rejected once booked."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+    owner = _owner_token(client)
+    _, slot = _setup_service(client, owner)
+
+    r = client.post(
+        "/bookings/public",
+        json={
+            "slot_start": slot,
+            "customer_name": "Guest",
+            "customer_phone": "09170000004",
+        },
+    )
+    assert r.status_code == 201, r.text
+    booking_id = r.json()["id"]
+
+    r = client.post(
+        f"/bookings/{booking_id}/payment-proof-file",
+        files={"file": ("receipt.png", b"\x89PNG\r\n\x1a\n" + b"0" * 100, "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    assert "/uploads/" in r.json()["payment_proof_url"]
+    assert r.json()["downpayment_status"] == "pending_verification"
+
+    # owner confirms -> booked; guest re-upload is rejected
+    r = client.patch(
+        f"/bookings/{booking_id}/confirm-payment",
+        headers=_auth_header(owner),
+    )
+    assert r.status_code == 200, r.text
+    assert (
+        client.post(
+            f"/bookings/{booking_id}/payment-proof-file",
+            files={
+                "file": ("again.png", b"\x89PNG\r\n\x1a\n" + b"1" * 100, "image/png")
+            },
+        ).status_code
+        == 400
+    )
+
+
+def test_guest_proof_rejected_after_payment_window(client, db_session):
+    """A stale-but-unswept pending booking refuses guest proof."""
+    from app.models.booking import Booking as BookingModel
+
+    owner = _owner_token(client)
+    _, slot = _setup_service(client, owner)
+
+    r = client.post(
+        "/bookings/public",
+        json={
+            "slot_start": slot,
+            "customer_name": "Guest",
+            "customer_phone": "09170000005",
+        },
+    )
+    assert r.status_code == 201, r.text
+    booking_id = r.json()["id"]
+
+    booking = next(
+        b for b in db_session.query(BookingModel).all() if str(b.id) == booking_id
+    )
+    booking.created_at = datetime.utcnow() - timedelta(minutes=16)
+    db_session.commit()
+
+    r = client.post(
+        f"/bookings/{booking_id}/payment-proof",
+        json={"payment_proof_url": "https://x/late.png"},
+    )
+    assert r.status_code == 400, r.text
 
 
 def test_claim_phone_normalization_plus63_vs_09(client):

@@ -3,6 +3,7 @@ import {
   CircleAlert,
   CircleCheck,
   Clock,
+  Image as ImageIcon,
   ListOrdered,
   Plus,
   Scissors,
@@ -37,11 +38,16 @@ import {
 } from "@/lib/api";
 import { DAY_NAMES } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_HERO_IMAGE,
+  getHeroImage,
+  heroImageSnippet,
+} from "@/config/site";
 
 function SectionIcon({ icon: Icon }: { icon: typeof Store }) {
   return (
     <span
-      className="rounded-lg bg-accent/15 p-1.5 text-accent"
+      className="rounded-lg bg-accent-deep/10 p-1.5 text-accent-deep"
       aria-hidden="true"
     >
       <Icon className="h-4 w-4" />
@@ -67,6 +73,11 @@ export default function ShopControls() {
   const [availEnd, setAvailEnd] = useState("12:30");
   const [savingAvail, setSavingAvail] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Hero appearance — preview-only here; the permanent value lives in
+  // src/config/site.ts (or VITE_HERO_IMAGE_URL) so every visitor sees it.
+  const [heroDraft, setHeroDraft] = useState(getHeroImage);
+  const [heroCopied, setHeroCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,8 +123,8 @@ export default function ShopControls() {
       await toggleShopStatus(checked);
       setNotice(
         checked
-          ? "Shop is open — accepting new bookings."
-          : "Shop is closed — bookings paused.",
+          ? "Shop is open. Accepting new bookings."
+          : "Shop is closed. Bookings paused.",
       );
     } catch (e: unknown) {
       setShopOpen(!checked);
@@ -140,7 +151,7 @@ export default function ShopControls() {
         description: service.description,
       });
       setService(updated);
-      setNotice(`Slot length saved — ${mins} minutes per booking.`);
+      setNotice(`Slot length saved. ${mins} minutes per booking.`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save duration");
     } finally {
@@ -201,7 +212,7 @@ export default function ShopControls() {
       <div className="animate-enter">
         <h1 className="text-2xl font-bold tracking-tight">Shop Controls</h1>
         <p className="text-sm text-muted-foreground">
-          Status, service, hours, and house rules — everything clients see.
+          Status, service, hours, and house rules. Everything clients see.
         </p>
       </div>
 
@@ -242,8 +253,8 @@ export default function ShopControls() {
                   <p className="text-sm font-medium">Shop status</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {shopOpen
-                      ? "Open — accepting new bookings"
-                      : "Closed — bookings paused (existing bookings honored)"}
+                      ? "Open. Accepting new bookings"
+                      : "Closed. Bookings paused (existing bookings honored)"}
                   </p>
                 </div>
               </div>
@@ -273,6 +284,81 @@ export default function ShopControls() {
                   aria-label="Toggle shop open or closed"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="animate-enter-2">
+            <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+              <SectionIcon icon={ImageIcon} />
+              <div>
+                <CardTitle className="text-sm">Appearance: hero image</CardTitle>
+                <p className="text-xs font-normal text-muted-foreground">
+                  The big photo on the public homepage.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="overflow-hidden rounded-lg border">
+                <img
+                  src={heroDraft || DEFAULT_HERO_IMAGE}
+                  alt="Homepage hero preview"
+                  className="h-36 w-full object-cover"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.style.opacity = "0.25";
+                  }}
+                />
+              </div>
+              <div>
+                <Label htmlFor="hero-url" className="text-xs">
+                  Image URL (paste to preview)
+                </Label>
+                <Input
+                  id="hero-url"
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://…"
+                  value={heroDraft}
+                  onChange={(e) => {
+                    setHeroDraft(e.target.value);
+                    setHeroCopied(false);
+                  }}
+                  className="mt-1 font-mono text-xs"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setHeroDraft(DEFAULT_HERO_IMAGE);
+                    setHeroCopied(false);
+                  }}
+                >
+                  Reset to default
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!heroDraft.trim() || heroDraft.trim() === getHeroImage()}
+                  onClick={() => {
+                    const snippet = heroImageSnippet(heroDraft.trim());
+                    void navigator.clipboard
+                      ?.writeText(snippet)
+                      .then(() => setHeroCopied(true))
+                      .catch(() => setHeroCopied(false));
+                  }}
+                >
+                  {heroCopied ? "Copied. Paste into site.ts" : "Copy change snippet"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Preview is instant on this device only. To make it permanent
+                for all visitors, paste the snippet into{" "}
+                <code className="font-mono">src/config/site.ts</code> as{" "}
+                <code className="font-mono">DEFAULT_HERO_IMAGE</code> (or set{" "}
+                <code className="font-mono">VITE_HERO_IMAGE_URL</code>) and
+                redeploy.
+              </p>
             </CardContent>
           </Card>
 
@@ -325,7 +411,7 @@ export default function ShopControls() {
                       className="mt-0.5 h-3.5 w-3.5 shrink-0"
                       aria-hidden="true"
                     />
-                    Slot length sets the booking grid. Lunch break 12:30–1:30 PM
+                    Slot length sets the booking grid. Lunch break 12:30-1:30 PM
                     is always blocked.
                   </p>
                 </>
@@ -369,7 +455,7 @@ export default function ShopControls() {
                             key={a.id}
                             className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-xs tabular-nums"
                           >
-                            {a.start_time}–{a.end_time}
+                            {a.start_time}-{a.end_time}
                             <button
                               type="button"
                               onClick={() =>
@@ -465,14 +551,14 @@ export default function ShopControls() {
                 <ol className="list-inside list-decimal space-y-1.5 text-sm text-slate-700">
                   {rules.map((rule) => (
                     <li key={rule.id}>
-                      <span className="font-semibold text-slate-900">{rule.title}</span>{" "}
-                      — {rule.text}
+                      <span className="font-semibold text-slate-900">{rule.title}</span>:{" "}
+                      {rule.text}
                     </li>
                   ))}
                 </ol>
               )}
               <p className="mt-3 text-xs text-muted-foreground">
-                Rule editing needs a backend endpoint — out of scope for this
+                Rule editing needs a backend endpoint. Out of scope for this
                 pass. Ask your developer to add it next.
               </p>
             </CardContent>

@@ -21,6 +21,7 @@ from app.schemas.booking import (
     BookingPaymentProof,
 )
 from app.services import booking_service
+from app.business_rules import PENDING_TTL_MINUTES
 from app.core.dependency import (
     get_current_user,
     get_optional_user,
@@ -263,10 +264,10 @@ def claim_booking(
 def upload_payment_proof(
     booking_id: str,
     data: BookingPaymentProof,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    """Upload GCash payment proof URL (login required; owners or owning customer only)."""
+    """Upload GCash payment proof URL (guests: unlinked pending bookings only; otherwise owner/owning customer)."""
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if booking is None:
         raise HTTPException(
@@ -301,8 +302,30 @@ def _upload_dir() -> Path:
     return d
 
 
-def _check_proof_access(booking: Booking, current_user: User) -> None:
-    """Shared auth + status guard for both proof endpoints (URL and file)."""
+def _check_proof_access(booking: Booking, current_user: User | None) -> None:
+    """Shared auth + status guard for both proof endpoints (URL and file).
+
+    Guests (no login) may upload only to an unlinked booking that is still
+    pending inside the payment window — the unguessable booking UUID is the
+    credential. Anything linked to an account still needs its owner.
+    """
+    if current_user is None:
+        if booking.customer_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This booking is linked to an account. Log in as its owner to manage it.",
+            )
+        if booking.status != BookingStatus.PENDING.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Booking is '{booking.status}', not pending — cannot upload proof",
+            )
+        if _guest_upload_window_expired(booking):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"The {PENDING_TTL_MINUTES}-minute payment window has passed — please book again.",
+            )
+        return
     if not _can_access_booking(booking, current_user):
         if booking.customer_id is None:
             raise HTTPException(
@@ -318,6 +341,20 @@ def _check_proof_access(booking: Booking, current_user: User) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Booking is '{booking.status}', not pending — cannot upload proof",
         )
+
+
+def _guest_upload_window_expired(booking: Booking) -> bool:
+    """True if a guest booking aged past the pending payment window.
+
+    Backstop for the scheduler job that flips stale pendings to EXPIRED —
+    enforced here too so a not-yet-swept booking can't accept proof.
+    """
+    created = booking.created_at
+    if created is None:
+        return False
+    if created.tzinfo is not None:
+        created = created.replace(tzinfo=None)
+    return datetime.utcnow() - created > timedelta(minutes=PENDING_TTL_MINUTES)
 
 
 def _delete_local_proof_file(old_url: str | None, upload_dir: Path) -> None:
@@ -342,10 +379,13 @@ async def upload_payment_proof_file(
     booking_id: str,
     request: Request,
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
-    """Upload a GCash proof image file (JPG/PNG/WEBP, login required).
+    """Upload a GCash proof image file (JPG/PNG/WEBP).
+
+    Guests may upload to their own unlinked booking while it is still pending
+    inside the payment window; otherwise the owner or owning customer.
 
     Stores the file on local disk under ``settings.upload_dir`` and saves
     its absolute URL in ``booking.payment_proof_url`` so existing owner

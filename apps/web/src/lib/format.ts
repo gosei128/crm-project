@@ -52,7 +52,7 @@ export function formatSlotTime(iso: string): string {
   });
 }
 
-/** "10:30 AM – 11:00 AM" given a start ISO + duration. */
+/** "10:30 AM - 11:00 AM" given a start ISO + duration (hyphen for ranges). */
 export function formatSlotRange(slotStart: string, durationMinutes?: number): string {
   const start = new Date(slotStart);
   const fmt = (d: Date) =>
@@ -63,7 +63,7 @@ export function formatSlotRange(slotStart: string, durationMinutes?: number): st
     });
   if (!durationMinutes) return fmt(start);
   const end = new Date(start.getTime() + durationMinutes * 60000);
-  return `${fmt(start)} – ${fmt(end)}`;
+  return `${fmt(start)} - ${fmt(end)}`;
 }
 
 /** "Tue, Sep 9" for day headers. */
@@ -76,13 +76,13 @@ export function formatDayHeader(date: string): string {
   });
 }
 
-/** "Sep 8 – Sep 14, 2026" for week navigation. */
+/** "Sep 8 - Sep 14, 2026" for week navigation (hyphen for ranges). */
 export function formatWeekRange(monday: Date): string {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   const fmt = (d: Date) =>
     d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return `${fmt(monday)} – ${fmt(sunday)}, ${monday.getFullYear()}`;
+  return `${fmt(monday)} - ${fmt(sunday)}, ${monday.getFullYear()}`;
 }
 
 /** "Sep 9, 2026, 10:30 AM" — full timestamp for meta rows. */

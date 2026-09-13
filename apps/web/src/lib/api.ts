@@ -111,24 +111,6 @@ export async function login(email: string, password: string) {
   return res.json(); // { access_token, token_type }
 }
 
-export async function signup(
-  email: string,
-  password: string,
-  name: string,
-) {
-  const res = await fetch(`${API_URL}/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, name }),
-  });
-
-  if (!res.ok) {
-    const error = await res.json();
-    throw new Error(error.detail || "Signup failed");
-  }
-  return res.json(); // the created user (UserRead shape)
-}
-
 export async function getMe(): Promise<User> {
   return request("/auth/me");
 }
@@ -143,21 +125,7 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 }
 
-export async function claimBooking(
-  bookingId: string,
-  customerPhone: string,
-): Promise<Booking> {
-  return request(`/bookings/${bookingId}/claim`, {
-    method: "POST",
-    body: JSON.stringify({ customer_phone: customerPhone }),
-  });
-}
-
 // --- Services (singleton haircut) ---
-export async function getServices(): Promise<Service[]> {
-  return request("/services/");
-}
-
 export async function getSingletonService(): Promise<Service> {
   return request("/services/singleton");
 }
@@ -211,23 +179,6 @@ export async function createPublicBooking(
   });
 }
 
-export async function createAuthenticatedBooking(data: CreateBookingPublicData): Promise<Booking> {
-  return request("/bookings/authenticated", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function uploadPaymentProof(
-  bookingId: string,
-  paymentProofUrl: string,
-): Promise<Booking> {
-  return request(`/bookings/${bookingId}/payment-proof`, {
-    method: "POST",
-    body: JSON.stringify({ payment_proof_url: paymentProofUrl }),
-  });
-}
-
 /** Upload a GCash proof image file (JPG/PNG/WEBP). Uses multipart/form-data. */
 export async function uploadPaymentProofFile(
   bookingId: string,
@@ -251,10 +202,6 @@ export async function uploadPaymentProofFile(
     throw new ApiError(res.status, error.detail || `HTTP ${res.status}`);
   }
   return res.json();
-}
-
-export async function getMyBookings(): Promise<Booking[]> {
-  return request("/bookings/me");
 }
 
 // --- Owner ---

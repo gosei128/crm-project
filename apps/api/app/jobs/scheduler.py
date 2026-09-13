@@ -14,15 +14,15 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.booking import Booking, BookingStatus
 from app.models.service import Service
+from app.business_rules import PENDING_TTL_MINUTES, LATE_THRESHOLD_MINUTES
 
 # Job intervals
 PENDING_EXPIRY_INTERVAL_MINUTES = 1  # check every minute
 NO_SHOW_CHECK_INTERVAL_MINUTES = 5
 LATE_CHECK_INTERVAL_MINUTES = 5
 
-# Business rule constants
-PENDING_TTL_MINUTES = 15
-LATE_THRESHOLD_MINUTES = 15
+# Business rule constants live in app.business_rules (single source of truth,
+# importable without APScheduler).
 
 
 scheduler: AsyncIOScheduler | None = None
