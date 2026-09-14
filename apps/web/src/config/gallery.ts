@@ -1,41 +1,37 @@
 /**
- * Owner work showcase. Swap any entry with a real photo later:
+ * Owner work showcase.
  *
- * 1. Put the file in `apps/web/public/` (e.g. `apps/web/public/cut-1.jpg`),
- *    then set `src` to `/cut-1.jpg`. Files in `public/` are served as-is,
- *    no import needed.
- * 2. Or paste any https image URL as `src`.
- * 3. Update `alt` to describe the actual cut (screen readers read it).
+ * The live gallery comes from the API (`GET /gallery`) and is managed by
+ * the owner in Shop Controls → Work showcase (upload, caption, reorder,
+ * delete). What lives here is only the offline fallback: bundled sample
+ * photos in `apps/web/public/samples/` (served as-is at `/samples/…`,
+ * no import needed) shown if the API is unreachable.
  *
- * Until then these are seeded placeholders: same seed always returns the
- * same photo, so the layout previews exactly as it will with real shots.
  * Recommended shape is portrait 4:5, around 800x1000.
  */
 
 export interface GalleryImage {
-  src: string;
+  id: string;
+  image_url: string;
   alt: string;
+  caption: string | null;
+  sort_order: number;
 }
 
-export const GALLERY_IMAGES: GalleryImage[] = [
-  {
-    src: "../src/assets/images/samples/sample-1.jpg",
-    alt: "Haircut portfolio placeholder 1",
-  },
-  {
-    src: "../src/assets/images/samples/sample-2.jpg",
-    alt: "Haircut portfolio placeholder 2",
-  },
-  {
-    src: "../src/assets/images/samples/sample-3.jpg",
-    alt: "Haircut portfolio placeholder 3",
-  },
-  {
-    src: "../src/assets/images/samples/sample-6.jpg",
-    alt: "Haircut portfolio placeholder 4",
-  },
-  {
-    src: "../src/assets/images/samples/sample-7.jpg",
-    alt: "Haircut portfolio placeholder 5",
-  },
+export const FALLBACK_GALLERY_IMAGES: GalleryImage[] = [
+  { id: "sample-1", image_url: "/samples/sample-1.jpg", alt: "Classic taper fade", caption: null, sort_order: 0 },
+  { id: "sample-2", image_url: "/samples/sample-2.jpg", alt: "Skin fade with textured top", caption: null, sort_order: 1 },
+  { id: "sample-3", image_url: "/samples/sample-3.jpg", alt: "Scissor cut, natural finish", caption: null, sort_order: 2 },
+  { id: "sample-4", image_url: "/samples/sample-4.jpg", alt: "Buzz cut with sharp lineup", caption: null, sort_order: 3 },
+  { id: "sample-5", image_url: "/samples/sample-5.jpg", alt: "Pompadour with faded sides", caption: null, sort_order: 4 },
+  { id: "sample-6", image_url: "/samples/sample-6.jpg", alt: "Crop cut, matte texture", caption: null, sort_order: 5 },
+  { id: "sample-7", image_url: "/samples/sample-7.jpg", alt: "Beard trim and shape-up", caption: null, sort_order: 6 },
 ];
+
+/**
+ * Fallback list shaped like the API type (the API always returns
+ * `created_at`; offline samples predate any timestamp, so empty string).
+ */
+export function fallbackGallery(): import("@/lib/api").GalleryPhoto[] {
+  return FALLBACK_GALLERY_IMAGES.map((p) => ({ ...p, created_at: "" }));
+}

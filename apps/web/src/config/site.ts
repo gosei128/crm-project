@@ -1,25 +1,14 @@
 /**
- * HOW TO CHANGE THE HERO IMAGE LATER (pick one):
+ * Homepage hero image — resolution order:
  *
- * 1. EASIEST — edit DEFAULT_HERO_IMAGE below and redeploy. Any https URL
- *    works (Unsplash, Cloudinary, your own hosting). Keep it a moody,
- *    dark barbershop photo ~2000px wide for crisp desktop + mobile.
- *
- * 2. NO-REBUILD per environment — set VITE_HERO_IMAGE_URL in
- *    apps/web/.env (or your host's env vars). It wins over the constant
- *    below. Example:
- *      VITE_HERO_IMAGE_URL=https://images.unsplash.com/photo-...?q=80&w=2000&auto=format&fit=crop
- *
- * 3. FROM THE OWNER DASHBOARD — open Shop Controls → Appearance, paste a
- *    URL to preview it live. (Preview is instant; making it permanent for
- *    all visitors still means option 1 or 2 + redeploy — that card shows
- *    you the exact snippet to paste.)
+ * 1. Owner upload via Shop Controls → Appearance (stored in the API,
+ *    served from `/uploads/hero/`). Instant, no redeploy.
+ * 2. `VITE_HERO_IMAGE_URL` env override (set in apps/web/.env).
+ * 3. Bundled default below (`kabarbers.jpg`).
  *
  * TIPS:
  * - Prefer landscape, dark, high-contrast shots (clippers, chair, fade
- *   close-up). The overlay darkens the left 2/3 so white text stays readable.
- * - Unsplash: append `?q=80&w=2000&auto=format&fit=crop` for optimized CDN
- *   delivery. Hotlinking Unsplash is allowed via their CDN.
+ *   close-up). The overlay darkens the photo so text stays readable.
  * - Keep ALT text meaningful for screen readers.
  */
 
@@ -44,9 +33,12 @@ export function getHeroImage(): string {
   return env.length > 0 ? env : DEFAULT_HERO_IMAGE;
 }
 
-/** Copy-paste snippet the Appearance card shows after previewing a URL. */
-export function heroImageSnippet(url: string): string {
-  return `export const DEFAULT_HERO_IMAGE =\n  "${url}";`;
+/** API-uploaded hero wins over everything when present. */
+export function resolveHeroImage(
+  uploadedUrl: string | null | undefined,
+): string {
+  if (uploadedUrl && uploadedUrl.trim()) return uploadedUrl.trim();
+  return getHeroImage();
 }
 
 export const HERO_COPY = {

@@ -9,6 +9,7 @@ import ImageLogo from "../../assets/images/kabarbers-logo.jpg";
 const LINKS = [
   { to: "/schedule", label: "Schedule" },
   { to: "/book", label: "Book" },
+  { to: "/gallery", label: "Gallery" },
 ];
 
 /**

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import PublicNav, { NavSentinel } from "@/components/public/PublicNav";
 import PublicFooter from "@/components/public/PublicFooter";
+import SocialLinks from "@/components/public/SocialLinks";
 import Hero from "@/screens/Hero";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,11 +22,13 @@ import {
 } from "@/components/ui/accordion";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import {
+  getGallery,
   getShopRules,
   getShopStatus,
   getSingletonService,
   getWeeklySchedule,
   type DaySchedule,
+  type GalleryPhoto,
   type ShopRule,
 } from "@/lib/api";
 import {
@@ -34,9 +37,8 @@ import {
   shopDirectionsUrl,
   shopOsmUrl,
 } from "@/lib/shopLocation";
-import { HERO_FALLBACK_IMAGE } from "@/config/site";
-
-import { GALLERY_IMAGES } from "@/config/gallery";
+import { fallbackGallery } from "@/config/gallery";
+import { HERO_FALLBACK_IMAGE, resolveHeroImage } from "@/config/site";
 import { initLenis } from "@/lib/lenis";
 
 const ShopMap = lazy(() => import("@/components/shop/ShopMap"));
@@ -79,6 +81,10 @@ export default function Landing() {
   const [days, setDays] = useState<DaySchedule[]>([]);
   const [rules, setRules] = useState<ShopRule[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(true);
+  const [showcase, setShowcase] = useState<GalleryPhoto[]>(() =>
+    fallbackGallery(),
+  );
+  const [heroImage, setHeroImage] = useState<string | null>(null);
 
   // Buttery smooth scrolling, landing only. Destroyed on unmount so the
   // booking and dashboard pages keep native scroll.
@@ -86,23 +92,25 @@ export default function Landing() {
 
   // Fade + slide-up per section as it enters the viewport. Re-scan when
   // the async house-rules section mounts so it reveals too.
-  useScrollReveal([rules.length]);
+  useScrollReveal([rules.length, showcase.length]);
 
   useEffect(() => {
     let cancelled = false;
     async function run() {
       setLoadingPreview(true);
       const monday = toYMD(getMonday(new Date()));
-      const [shop, svc, sched, shopRules] = await Promise.allSettled([
+      const [shop, svc, sched, shopRules, gallery] = await Promise.allSettled([
         getShopStatus(),
         getSingletonService(),
         getWeeklySchedule(monday),
         getShopRules(),
+        getGallery(),
       ]);
       if (cancelled) return;
       if (shop.status === "fulfilled") {
         setShopOpen(shop.value.is_open);
         setShopName(shop.value.shop_name || "Kabarbers");
+        setHeroImage(shop.value.hero_image_url);
       }
       if (svc.status === "fulfilled") {
         setServiceName(svc.value.name || "Haircut");
@@ -110,6 +118,8 @@ export default function Landing() {
       }
       if (sched.status === "fulfilled") setDays(sched.value.days);
       if (shopRules.status === "fulfilled") setRules(shopRules.value);
+      if (gallery.status === "fulfilled" && gallery.value.length > 0)
+        setShowcase(gallery.value);
       setLoadingPreview(false);
     }
     void run();
@@ -171,13 +181,13 @@ export default function Landing() {
       <PublicNav />
       <NavSentinel />
       <main className="pb-20 md:pb-0">
-        <Hero shopOpen={shopOpen} freeToday={freeToday} />
+        <Hero shopOpen={shopOpen} freeToday={freeToday} heroImage={heroImage} />
 
         {/* Craft band: full-bleed photo, functional caption below */}
         <section aria-label="Inside the shop">
           <div className="overflow-hidden border-y border-espresso/10">
             <img
-              src={HERO_FALLBACK_IMAGE}
+              src={resolveHeroImage(HERO_FALLBACK_IMAGE)}
               alt="Inside Kabarbers barbershop in Malolos"
               loading="lazy"
               className="h-64 w-full object-cover object-center sm:h-96"
@@ -191,28 +201,42 @@ export default function Landing() {
           </p>
         </section>
 
-        {/* Work showcase: owner cuts, images swapped in via config */}
+        {/* Work showcase: owner-managed via Shop Controls → /gallery */}
         <section
           aria-label="Recent cuts"
           className="reveal mx-auto w-full max-w-6xl px-4 py-14"
         >
-          <h2 className="font-display max-w-xl text-4xl tracking-wide uppercase sm:text-5xl">
-            Fresh from the chair
-          </h2>
-          <p className="mt-3 max-w-md text-sm leading-relaxed text-espresso/65">
-            Recent cuts from the shop. New photos land here after every busy
-            week.
-          </p>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-display max-w-xl text-4xl tracking-wide uppercase sm:text-5xl">
+                Fresh from the chair
+              </h2>
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-espresso/65">
+                Recent cuts from the shop. New photos land here after every busy
+                week.
+              </p>
+            </div>
+            <Link
+              to="/gallery"
+              className="rounded-xl border border-espresso/20 px-4 py-2.5 text-sm font-semibold whitespace-nowrap text-espresso transition-colors hover:bg-espresso/5"
+            >
+              View All
+            </Link>
+          </div>
           <ul className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-            {GALLERY_IMAGES.map((photo, i) => (
+            {showcase.slice(0, 5).map((photo, i) => (
               <li
-                key={photo.src}
+                key={photo.id}
                 className={i === 0 ? "col-span-2 md:row-span-2" : undefined}
               >
-                <figure className="group h-full overflow-hidden rounded-2xl border border-espresso/10 bg-cream shadow-[0_2px_12px_-6px_rgb(43_33_24/0.25)]">
+                <Link
+                  to="/gallery"
+                  aria-label={`View gallery: ${photo.alt || "showcase photo"}`}
+                  className="group block h-full overflow-hidden rounded-2xl border border-espresso/10 bg-cream shadow-[0_2px_12px_-6px_rgb(43_33_24/0.25)]"
+                >
                   <img
-                    src={photo.src}
-                    alt={photo.alt}
+                    src={photo.image_url}
+                    alt={photo.alt || "Barbershop work photo"}
                     loading="lazy"
                     className={
                       i === 0
@@ -220,10 +244,10 @@ export default function Landing() {
                         : "aspect-[4/5] h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
                     }
                     onError={(e) => {
-                      e.currentTarget.style.display = "none";
+                      e.currentTarget.style.opacity = "0.25";
                     }}
                   />
-                </figure>
+                </Link>
               </li>
             ))}
           </ul>
@@ -457,6 +481,14 @@ export default function Landing() {
                   Strictly by appointment. Book before you travel so the chair
                   is ready.
                 </p>
+                <div className="mt-4">
+                  <p className="text-xs font-semibold tracking-wide text-espresso/60 uppercase">
+                    Follow the shop
+                  </p>
+                  <SocialLinks
+                    className="mt-2 [&_a]:bg-espresso/10 [&_a]:text-espresso [&_a]:hover:bg-brass/25 [&_a]:hover:text-brass-deep"
+                  />
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button

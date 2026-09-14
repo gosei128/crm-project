@@ -204,6 +204,63 @@ export async function uploadPaymentProofFile(
   return res.json();
 }
 
+// --- Gallery (owner-managed work showcase) ---
+export interface GalleryPhoto {
+  id: string;
+  image_url: string;
+  alt: string;
+  caption: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export async function getGallery(): Promise<GalleryPhoto[]> {
+  return request("/gallery");
+}
+
+export async function uploadGalleryPhoto(
+  file: File,
+  alt: string,
+  caption?: string,
+): Promise<GalleryPhoto> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+  form.append("alt", alt);
+  if (caption && caption.trim()) form.append("caption", caption.trim());
+
+  const res = await fetch(`${API_URL}/gallery`, {
+    method: "POST",
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Upload failed" }));
+    if (res.status === 401) clearToken();
+    throw new ApiError(res.status, error.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function updateGalleryPhoto(
+  photoId: string,
+  data: { alt?: string; caption?: string | null; sort_order?: number },
+): Promise<GalleryPhoto> {
+  return request(`/gallery/${photoId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteGalleryPhoto(photoId: string): Promise<void> {
+  return request(`/gallery/${photoId}`, {
+    method: "DELETE",
+  });
+}
+
 // --- Owner ---
 export interface OwnerBookingFilters {
   status?: string;
@@ -274,6 +331,9 @@ export interface ShopStatus {
   id: string;
   is_open: boolean;
   shop_name: string;
+  hero_image_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
   updated_at: string;
 }
 
@@ -285,6 +345,43 @@ export async function toggleShopStatus(isOpen: boolean): Promise<ShopStatus> {
   return request("/shop/status", {
     method: "PATCH",
     body: JSON.stringify({ is_open: isOpen }),
+  });
+}
+
+export async function uploadHeroImage(file: File): Promise<ShopStatus> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_URL}/shop/hero-image`, {
+    method: "POST",
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Upload failed" }));
+    if (res.status === 401) clearToken();
+    throw new ApiError(res.status, error.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function resetHeroImage(): Promise<ShopStatus> {
+  return request("/shop/hero-image", {
+    method: "DELETE",
+  });
+}
+
+export async function updateShopSocials(data: {
+  facebook_url?: string;
+  tiktok_url?: string;
+}): Promise<ShopStatus> {
+  return request("/shop/socials", {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 }
 

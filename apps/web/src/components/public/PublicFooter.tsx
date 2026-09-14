@@ -5,6 +5,7 @@ import {
   shopAddressSingleLine,
   shopDirectionsUrl,
 } from "@/lib/shopLocation";
+import SocialLinks from "@/components/public/SocialLinks";
 
 export default function PublicFooter() {
   const year = new Date().getFullYear();
@@ -24,6 +25,7 @@ export default function PublicFooter() {
             Strictly by appointment. Book online, lock your slot with a GCash
             downpayment, walk straight to the chair.
           </p>
+          <SocialLinks className="mt-4" />
         </div>
         <div>
           <p className="text-sm font-semibold tracking-wide text-cream-ink uppercase">
@@ -62,6 +64,12 @@ export default function PublicFooter() {
               className="w-fit rounded px-1 py-1.5 hover:text-cream-ink hover:underline"
             >
               Book Appointment
+            </Link>
+            <Link
+              to="/gallery"
+              className="w-fit rounded px-1 py-1.5 hover:text-cream-ink hover:underline"
+            >
+              Work Gallery
             </Link>
             <Link
               to="/login"

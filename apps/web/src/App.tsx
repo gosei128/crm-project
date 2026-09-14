@@ -5,6 +5,7 @@ import Landing from "./screens/Landing";
 import AppLayout from "./screens/AppLayout";
 import Book from "./screens/Book";
 import Schedule from "./screens/Schedule";
+import Gallery from "./screens/Gallery";
 import { AuthProvider } from "./lib/auth";
 import { AuthLoading, RequireOwner } from "./components/auth/Guards";
 
@@ -31,6 +32,7 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/book" element={<Book />} />
+          <Route path="/gallery" element={<Gallery />} />
           <Route path="/login" element={<LoginScreen />} />
 
           {/* Owner login — the only login on the site (admin) */}

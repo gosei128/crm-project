@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.config import settings
-from app.routers import auth, bookings, facebook, services, shop
+from app.routers import auth, bookings, facebook, gallery, services, shop
 
 # Shop rules — official Kabarbers policy + operational lines.
 # Displayed to clients during booking (Book flow), on the public schedule
@@ -106,6 +106,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(facebook.router)
 app.include_router(bookings.router)
+app.include_router(gallery.router)
 app.include_router(services.router)
 app.include_router(shop.router)
 

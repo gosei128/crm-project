@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CircleAlert,
   CircleCheck,
@@ -30,19 +30,20 @@ import {
   getShopRules,
   getShopStatus,
   getSingletonService,
+  resetHeroImage,
   toggleShopStatus,
   updateSingletonService,
+  uploadHeroImage,
   type Availability,
   type Service,
   type ShopRule,
 } from "@/lib/api";
 import { DAY_NAMES } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import {
-  DEFAULT_HERO_IMAGE,
-  getHeroImage,
-  heroImageSnippet,
-} from "@/config/site";
+import GalleryManager from "@/components/owner/GalleryManager";
+import SocialLinksManager from "@/components/owner/SocialLinksManager";
+import { PROOF_ACCEPT, validateImageFile } from "@/lib/media";
+import { DEFAULT_HERO_IMAGE } from "@/config/site";
 
 function SectionIcon({ icon: Icon }: { icon: typeof Store }) {
   return (
@@ -74,10 +75,13 @@ export default function ShopControls() {
   const [savingAvail, setSavingAvail] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Hero appearance — preview-only here; the permanent value lives in
-  // src/config/site.ts (or VITE_HERO_IMAGE_URL) so every visitor sees it.
-  const [heroDraft, setHeroDraft] = useState(getHeroImage);
-  const [heroCopied, setHeroCopied] = useState(false);
+  // Hero appearance — uploaded file served by the API. Null means the
+  // bundled default photo.
+  const [heroUrl, setHeroUrl] = useState<string | null>(null);
+  const [heroFile, setHeroFile] = useState<File | null>(null);
+  const [heroPreview, setHeroPreview] = useState<string | null>(null);
+  const [heroBusy, setHeroBusy] = useState(false);
+  const heroInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +95,10 @@ export default function ShopControls() {
           getShopRules().catch(() => [] as ShopRule[]),
         ]);
         if (cancelled) return;
-        if (shopRes) setShopOpen(shopRes.is_open);
+        if (shopRes) {
+          setShopOpen(shopRes.is_open);
+          setHeroUrl(shopRes.hero_image_url);
+        }
         if (svcRes) {
           setService(svcRes);
           setDuration(String(svcRes.duration_minutes));
@@ -300,7 +307,7 @@ export default function ShopControls() {
             <CardContent className="space-y-3">
               <div className="overflow-hidden rounded-lg border">
                 <img
-                  src={heroDraft || DEFAULT_HERO_IMAGE}
+                  src={heroPreview ?? heroUrl ?? DEFAULT_HERO_IMAGE}
                   alt="Homepage hero preview"
                   className="h-36 w-full object-cover"
                   loading="lazy"
@@ -310,57 +317,98 @@ export default function ShopControls() {
                 />
               </div>
               <div>
-                <Label htmlFor="hero-url" className="text-xs">
-                  Image URL (paste to preview)
+                <Label htmlFor="hero-file" className="text-xs">
+                  Upload a photo (JPG, PNG, or WEBP · max 5 MB)
                 </Label>
                 <Input
-                  id="hero-url"
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://…"
-                  value={heroDraft}
+                  id="hero-file"
+                  ref={heroInputRef}
+                  type="file"
+                  accept={PROOF_ACCEPT}
                   onChange={(e) => {
-                    setHeroDraft(e.target.value);
-                    setHeroCopied(false);
+                    const selected = e.target.files?.[0] ?? null;
+                    if (heroPreview) URL.revokeObjectURL(heroPreview);
+                    setHeroPreview(null);
+                    setError(null);
+                    if (!selected) {
+                      setHeroFile(null);
+                      return;
+                    }
+                    const problem = validateImageFile(selected);
+                    if (problem) {
+                      setHeroFile(null);
+                      setError(problem);
+                      return;
+                    }
+                    setHeroFile(selected);
+                    setHeroPreview(URL.createObjectURL(selected));
                   }}
-                  className="mt-1 font-mono text-xs"
+                  disabled={heroBusy}
+                  className="mt-1 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-espresso/10 file:px-3 file:py-1.5 file:text-xs file:font-medium"
                 />
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
+                  disabled={heroBusy || !heroFile}
                   onClick={() => {
-                    setHeroDraft(DEFAULT_HERO_IMAGE);
-                    setHeroCopied(false);
+                    if (!heroFile) return;
+                    setHeroBusy(true);
+                    setError(null);
+                    setNotice(null);
+                    uploadHeroImage(heroFile)
+                      .then((s) => {
+                        setHeroUrl(s.hero_image_url);
+                        if (heroPreview) URL.revokeObjectURL(heroPreview);
+                        setHeroPreview(null);
+                        setHeroFile(null);
+                        if (heroInputRef.current)
+                          heroInputRef.current.value = "";
+                        setNotice("Hero photo updated — live for all visitors.");
+                      })
+                      .catch((err: unknown) => {
+                        setError(
+                          err instanceof Error ? err.message : "Upload failed",
+                        );
+                      })
+                      .finally(() => setHeroBusy(false));
+                  }}
+                >
+                  {heroBusy ? "Uploading…" : "Upload hero photo"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={heroBusy || !heroUrl}
+                  onClick={() => {
+                    setHeroBusy(true);
+                    setError(null);
+                    setNotice(null);
+                    resetHeroImage()
+                      .then((s) => {
+                        setHeroUrl(s.hero_image_url);
+                        setNotice("Hero photo reset to the bundled default.");
+                      })
+                      .catch((err: unknown) => {
+                        setError(
+                          err instanceof Error ? err.message : "Reset failed",
+                        );
+                      })
+                      .finally(() => setHeroBusy(false));
                   }}
                 >
                   Reset to default
                 </Button>
-                <Button
-                  size="sm"
-                  disabled={!heroDraft.trim() || heroDraft.trim() === getHeroImage()}
-                  onClick={() => {
-                    const snippet = heroImageSnippet(heroDraft.trim());
-                    void navigator.clipboard
-                      ?.writeText(snippet)
-                      .then(() => setHeroCopied(true))
-                      .catch(() => setHeroCopied(false));
-                  }}
-                >
-                  {heroCopied ? "Copied. Paste into site.ts" : "Copy change snippet"}
-                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Preview is instant on this device only. To make it permanent
-                for all visitors, paste the snippet into{" "}
-                <code className="font-mono">src/config/site.ts</code> as{" "}
-                <code className="font-mono">DEFAULT_HERO_IMAGE</code> (or set{" "}
-                <code className="font-mono">VITE_HERO_IMAGE_URL</code>) and
-                redeploy.
+                Uploads go live instantly for all visitors — no redeploy.
               </p>
             </CardContent>
           </Card>
+
+          <GalleryManager />
+
+          <SocialLinksManager />
 
           <Card className="animate-enter-2">
             <CardHeader className="flex flex-row items-center gap-2 space-y-0">

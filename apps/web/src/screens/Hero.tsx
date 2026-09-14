@@ -13,9 +13,12 @@ import HeroLogo from "../assets/images/kabarbers-logo.jpg";
 export default function Hero({
   shopOpen,
   freeToday,
+  heroImage,
 }: {
   shopOpen: boolean;
   freeToday: number | null;
+  /** API-uploaded hero URL; falls back to env/bundled default when null. */
+  heroImage: string | null;
 }) {
   return (
     <section
@@ -28,7 +31,7 @@ export default function Hero({
         aria-hidden="true"
       >
         <img
-          src={getHeroImage()}
+          src={heroImage && heroImage.trim() ? heroImage : getHeroImage()}
           alt=""
           role="presentation"
           fetchPriority="high"
