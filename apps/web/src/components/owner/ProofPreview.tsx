@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -15,13 +15,42 @@ import { isImageUrl } from "@/lib/media";
 export default function ProofPreview({
   booking,
   onClose,
+  onCancel,
+  actionLoading,
 }: {
   booking: Booking | null;
   onClose: () => void;
+  onCancel: (b: Booking) => void;
+  actionLoading: string | null;
 }) {
   // Track *which* booking was copied — no effect needed, resets per booking.
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const copied = copiedId === booking?.id;
+
+  // Two-tap guard for rejecting the proof (cancels the hold).
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    setConfirmingReject(false);
+  }, [booking?.id]);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  function handleReject() {
+    if (!booking) return;
+    if (confirmingReject) {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      setConfirmingReject(false);
+      onCancel(booking);
+      return;
+    }
+    setConfirmingReject(true);
+    timer.current = window.setTimeout(() => setConfirmingReject(false), 4000);
+  }
 
   async function handleCopy() {
     if (!booking?.payment_proof_url) return;
@@ -139,8 +168,26 @@ export default function ProofPreview({
 
           <p className="text-xs text-muted-foreground">
             Verify the amount and reference number in your GCash history, then
-            use Confirm Payment on the booking to approve it.
+            use Confirm Payment on the booking to approve it. If this is not
+            a real payment, reject it to cancel the hold and free the slot.
           </p>
+
+          {booking && booking.status === "pending" && (
+            <Button
+              variant={confirmingReject ? "destructive" : "outline"}
+              size="sm"
+              className="w-full"
+              disabled={actionLoading !== null}
+              onClick={handleReject}
+              title="Reject this proof and cancel the booking"
+            >
+              {actionLoading === booking.id
+                ? "Cancelling…"
+                : confirmingReject
+                  ? "Tap again to reject + cancel"
+                  : "Reject proof"}
+            </Button>
+          )}
         </div>
       </SheetContent>
     </Sheet>

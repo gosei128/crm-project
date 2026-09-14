@@ -11,10 +11,13 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@fontsource/anton':
+      '@fontsource/lato':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource/lato':
+      '@fontsource/rye':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/yellowtail':
         specifier: ^5.3.0
         version: 5.3.0
       '@radix-ui/react-select':
@@ -335,11 +338,14 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@fontsource/anton@5.3.0':
-    resolution: {integrity: sha512-OR1D5n124n2XRs66SbX7IjcOSptljEJE8FcDNnlni2y1/M6KpTx7cU2PIWzTSsBj4WFkHPw24On8qw3qkQZuTw==}
-
   '@fontsource/lato@5.3.0':
     resolution: {integrity: sha512-0WhF/4rhrw+ErIyneKvhHn2YAl+xf8GDtllgOgOzDmeaSlLQtjpChXaQOpWhG2BchQW0WJy2zLV12Hdg0ndOMw==}
+
+  '@fontsource/rye@5.3.0':
+    resolution: {integrity: sha512-nKMwMa2/y8LMfhxs7Wm6FnbwXLKsBrJKs6dygYOPrmbpRIvBlf7Kt1mDNm0lzDIuuU+ghluQsisqpQ7peDm7gA==}
+
+  '@fontsource/yellowtail@5.3.0':
+    resolution: {integrity: sha512-atz4CIdbP7otppxRaObJiygnkyJzIuLFpPRjWspXvXhBWLB0sk35cCu5r6gSkDomRtEWakJ8//bWbyBjJbilGg==}
 
   '@hono/node-server@2.1.1':
     resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
@@ -2911,9 +2917,11 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@fontsource/anton@5.3.0': {}
-
   '@fontsource/lato@5.3.0': {}
+
+  '@fontsource/rye@5.3.0': {}
+
+  '@fontsource/yellowtail@5.3.0': {}
 
   '@hono/node-server@2.1.1(hono@4.13.3)':
     dependencies:

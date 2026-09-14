@@ -188,11 +188,12 @@ def get_weekly_schedule(
                         all_slots.append((current, slot_end, service.id))
                     current += slot_length
 
-        # Get existing bookings for this day
+        # Get existing bookings for this day (status matters: pending holds
+        # show as "held", owner-confirmed ones as "booked")
         day_start = datetime.combine(target_date, time.min)
         day_end = datetime.combine(target_date, time.max)
         existing_bookings = (
-            db.query(Booking.slot_start)
+            db.query(Booking.slot_start, Booking.status)
             .filter(
                 Booking.slot_start >= day_start,
                 Booking.slot_end <= day_end,
@@ -200,12 +201,20 @@ def get_weekly_schedule(
             )
             .all()
         )
-        booked_times = {row[0] for row in existing_bookings}
+        statuses_by_slot: dict[datetime, set[str]] = {}
+        for slot_start, slot_status in existing_bookings:
+            statuses_by_slot.setdefault(slot_start, set()).add(slot_status)
 
         # Build slot list with status
         day_slots = []
         for slot_start, slot_end, service_id in all_slots:
-            status = "booked" if slot_start in booked_times else "available"
+            states = statuses_by_slot.get(slot_start, set())
+            if BookingStatus.BOOKED.value in states:
+                status = "booked"
+            elif BookingStatus.PENDING.value in states:
+                status = "held"
+            else:
+                status = "available"
             day_slots.append({
                 "time": slot_start.isoformat(),
                 "status": status,
@@ -498,6 +507,7 @@ def owner_list_bookings(
             BookingStatus.BOOKED.value,
             BookingStatus.COMPLETE.value,
             BookingStatus.EXPIRED.value,
+            BookingStatus.CANCELLED.value,
             BookingStatus.CANCELLED_NO_SHOW.value,
             BookingStatus.CANCELLED_LATE.value,
         }
@@ -612,3 +622,64 @@ def mark_no_show(
     db.commit()
     db.refresh(booking)
     return booking
+
+
+@router.patch("/{booking_id}/cancel", response_model=BookingRead)
+def cancel_booking(
+    booking_id: str,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Owner cancels a pending hold — e.g. the proof is not a real payment.
+
+    PENDING → CANCELLED. The slot is freed immediately (cancelled is not a
+    blocking status). Only pending bookings can be cancelled this way.
+    """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Booking not found")
+    if booking.status != BookingStatus.PENDING.value:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel a booking in '{booking.status}' status — only pending holds can be cancelled",
+        )
+    booking.status = BookingStatus.CANCELLED.value
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
+# Statuses whose records the owner may hard-delete (trash). Active holds
+# and confirmed bookings are never deletable — cancel them first.
+TERMINAL_STATUSES = {
+    BookingStatus.COMPLETE.value,
+    BookingStatus.EXPIRED.value,
+    BookingStatus.CANCELLED.value,
+    BookingStatus.CANCELLED_NO_SHOW.value,
+    BookingStatus.CANCELLED_LATE.value,
+}
+
+
+@router.delete("/{booking_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_booking(
+    booking_id: str,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Owner permanently deletes a terminal booking record + its proof file.
+
+    Only complete / expired / cancelled bookings can be trashed. Pending
+    holds and confirmed bookings are protected (cancel first).
+    """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Booking not found")
+    if booking.status not in TERMINAL_STATUSES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete a booking in '{booking.status}' status — only terminal (complete/expired/cancelled) records can be deleted",
+        )
+    _delete_local_proof_file(booking.payment_proof_url, _upload_dir())
+    db.delete(booking)
+    db.commit()
+    return None

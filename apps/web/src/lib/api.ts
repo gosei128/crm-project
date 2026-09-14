@@ -250,6 +250,18 @@ export async function ownerMarkNoShow(bookingId: string): Promise<Booking> {
   });
 }
 
+export async function ownerCancelBooking(bookingId: string): Promise<Booking> {
+  return request(`/bookings/${bookingId}/cancel`, {
+    method: "PATCH",
+  });
+}
+
+export async function ownerDeleteBooking(bookingId: string): Promise<void> {
+  return request(`/bookings/${bookingId}`, {
+    method: "DELETE",
+  });
+}
+
 // --- Shop Rules ---
 export async function getShopRules(): Promise<ShopRule[]> {
   const res = await request<{ rules: ShopRule[] }>("/shop-rules");
@@ -279,7 +291,8 @@ export async function toggleShopStatus(isOpen: boolean): Promise<ShopStatus> {
 // --- Weekly Schedule ---
 export interface SlotInfo {
   time: string;
-  status: "available" | "booked";
+  /** available: free · held: reserved, awaiting proof/review · booked: owner-confirmed */
+  status: "available" | "held" | "booked";
 }
 
 export interface DaySchedule {

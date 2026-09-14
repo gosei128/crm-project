@@ -4,24 +4,50 @@
  */
 
 export const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800 border-amber-200",
-  booked: "bg-blue-100 text-blue-800 border-blue-200",
-  complete: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  expired: "bg-slate-100 text-slate-500 border-slate-300",
-  cancelled_no_show: "bg-rose-100 text-rose-700 border-rose-200",
-  cancelled_late: "bg-rose-100 text-rose-700 border-rose-200",
+  pending: "bg-bronze/15 text-bronze border-bronze/30",
+  booked: "bg-oxblood/10 text-oxblood border-oxblood/25",
+  complete: "bg-moss/15 text-moss border-moss/30",
+  expired: "bg-espresso/10 text-espresso/55 border-espresso/20",
+  cancelled: "bg-oxblood/10 text-oxblood border-oxblood/25",
+  cancelled_no_show: "bg-oxblood/10 text-oxblood border-oxblood/25",
+  cancelled_late: "bg-oxblood/10 text-oxblood border-oxblood/25",
 };
 
 /** Left-accent bar color per status (timeline/card edge). */
 export const STATUS_ACCENT: Record<string, string> = {
-  pending: "bg-amber-500",
-  booked: "bg-blue-500",
-  complete: "bg-emerald-500",
-  expired: "bg-slate-300",
-  cancelled_no_show: "bg-rose-500",
-  cancelled_late: "bg-rose-500",
+  pending: "bg-bronze",
+  booked: "bg-oxblood",
+  complete: "bg-moss",
+  expired: "bg-espresso/30",
+  cancelled: "bg-oxblood",
+  cancelled_no_show: "bg-oxblood",
+  cancelled_late: "bg-oxblood",
 };
 
 export function statusLabel(status: string): string {
   return status.replace(/_/g, " ").toUpperCase();
+}
+
+/** Records the owner may hard-delete (trash). Active holds and confirmed
+ *  bookings are never deletable — cancel them first. */
+export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  "complete",
+  "expired",
+  "cancelled",
+  "cancelled_no_show",
+  "cancelled_late",
+]);
+
+/**
+ * Customer/owner-facing label: a PENDING booking splits by proof state.
+ * BOOKED appears only after the owner's confirm-payment tap.
+ */
+export function displayStatusLabel(
+  status: string,
+  paymentProofUrl?: string | null,
+): string {
+  if (status === "pending") {
+    return paymentProofUrl?.trim() ? "AWAITING REVIEW" : "AWAITING PROOF";
+  }
+  return statusLabel(status);
 }

@@ -9,6 +9,7 @@ VALID_STATUSES = {
     "booked",
     "complete",
     "expired",
+    "cancelled",
     "cancelled_no_show",
     "cancelled_late",
 }

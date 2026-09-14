@@ -13,7 +13,9 @@ import StatCard from "@/components/owner/StatCard";
 import {
   getShopStatus,
   getSingletonService,
+  ownerCancelBooking,
   ownerConfirmPayment,
+  ownerDeleteBooking,
   ownerListBookings,
   ownerMarkArrived,
   ownerMarkComplete,
@@ -127,6 +129,23 @@ export default function OwnerDashboard() {
     if (updated) setDetailsBooking(updated);
   }
 
+  /** Trash a terminal record, then close any sheet/modal showing it. */
+  async function handleDeleteBooking(b: Booking) {
+    setActionLoading(b.id);
+    setError(null);
+    try {
+      await ownerDeleteBooking(b.id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+      return;
+    } finally {
+      setActionLoading(null);
+    }
+    if (detailsBooking?.id === b.id) setDetailsBooking(null);
+    if (preview?.id === b.id) setPreview(null);
+    await refresh();
+  }
+
   const awaitingProof = pending
     .filter((b) => b.payment_proof_url)
     .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
@@ -155,10 +174,10 @@ export default function OwnerDashboard() {
       )}
 
       {!shopOpen && (
-        <Alert className="animate-enter border-amber-200 bg-amber-50 text-amber-900">
+        <Alert className="animate-enter border-bronze/40 bg-bronze/[0.08] text-espresso">
           <Store aria-hidden="true" />
           <AlertTitle>Shop is closed</AlertTitle>
-          <AlertDescription className="text-amber-800">
+          <AlertDescription className="text-espresso/75">
             New bookings are paused. Existing appointments are still honored.{" "}
             <button
               className="font-medium underline underline-offset-2"
@@ -189,7 +208,7 @@ export default function OwnerDashboard() {
           sub={
             pending.length === 0 ? "All clear" : "Awaiting GCash confirmation"
           }
-          accent="amber"
+          accent="bronze"
           loading={loading}
           onClick={() => navigate("/bookings?status=pending")}
           actionHint="View pending payments"
@@ -198,7 +217,7 @@ export default function OwnerDashboard() {
           label="Confirmed today"
           value={confirmedToday}
           sub="Booked slots"
-          accent="blue"
+          accent="oxblood"
           loading={loading}
           onClick={() => navigate("/bookings?status=booked")}
           actionHint="View confirmed bookings"
@@ -211,7 +230,7 @@ export default function OwnerDashboard() {
               ? "Nothing waiting"
               : "Oldest first. Verify in GCash"
           }
-          accent={awaitingProof.length > 0 ? "rose" : "emerald"}
+          accent={awaitingProof.length > 0 ? "oxblood" : "moss"}
           loading={loading}
           onClick={() => navigate("/bookings?status=pending")}
           actionHint="View proofs to review"
@@ -234,7 +253,7 @@ export default function OwnerDashboard() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 bg-accent-deep text-xs text-white hover:bg-orange-500"
+              className="h-7 bg-accent-deep text-xs text-cream-ink hover:bg-oxblood-bright"
               onClick={() => navigate("/bookings?status=pending")}
             >
               View all
@@ -251,7 +270,7 @@ export default function OwnerDashboard() {
             <p className="py-4 text-center text-sm text-muted-foreground">
               {pending.length === 0
                 ? "No pending payments. New bookings will show up here."
-                : "No proofs uploaded yet. Pending bookings expire 15 minutes after creation."}
+                : "No proofs uploaded yet. Holds without proof expire 15 minutes after creation; uploaded proofs wait for your review."}
             </p>
           ) : (
             awaitingProof.slice(0, 5).map((b) => (
@@ -329,8 +348,8 @@ export default function OwnerDashboard() {
             {Array.from({ length: 3 }).map((_, i) => (
               <Card key={i} className="motion-reduce:animate-none">
                 <CardContent className="animate-pulse py-4">
-                  <div className="mb-2 h-5 w-32 rounded bg-slate-100" />
-                  <div className="h-3 w-full rounded bg-slate-100" />
+                  <div className="mb-2 h-5 w-32 rounded bg-espresso/10" />
+                  <div className="h-3 w-full rounded bg-espresso/10" />
                 </CardContent>
               </Card>
             ))}
@@ -368,6 +387,10 @@ export default function OwnerDashboard() {
                   onMarkNoShow={(x) =>
                     void handleAction(x.id, () => ownerMarkNoShow(x.id))
                   }
+                  onCancel={(x) =>
+                    void handleAction(x.id, () => ownerCancelBooking(x.id))
+                  }
+                  onDelete={(x) => void handleDeleteBooking(x)}
                   onViewProof={setPreview}
                   onViewDetails={setDetailsBooking}
                 />
@@ -377,7 +400,12 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      <ProofPreview booking={preview} onClose={() => setPreview(null)} />
+      <ProofPreview
+        booking={preview}
+        onClose={() => setPreview(null)}
+        onCancel={(b) => void handleAction(b.id, () => ownerCancelBooking(b.id))}
+        actionLoading={actionLoading}
+      />
       <BookingDetailsModal
         booking={detailsBooking}
         serviceName={serviceName}
@@ -396,6 +424,10 @@ export default function OwnerDashboard() {
         onMarkNoShow={(b) =>
           void handleModalAction(b, () => ownerMarkNoShow(b.id))
         }
+        onCancel={(b) =>
+          void handleModalAction(b, () => ownerCancelBooking(b.id))
+        }
+        onDelete={(b) => void handleDeleteBooking(b)}
       />
     </div>
   );

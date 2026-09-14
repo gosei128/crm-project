@@ -27,8 +27,10 @@ const ENV_HERO_IMAGE = import.meta.env?.VITE_HERO_IMAGE_URL as
   | string
   | undefined;
 
-export const DEFAULT_HERO_IMAGE =
-  "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?q=80&w=2000&auto=format&fit=crop";
+// Bundled local photo — Vite rewrites this to the hashed public URL.
+import kabarbersPhoto from "../assets/images/kabarbers.jpg";
+
+export const DEFAULT_HERO_IMAGE = kabarbersPhoto;
 
 export const HERO_FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?q=80&w=2000&auto=format&fit=crop";

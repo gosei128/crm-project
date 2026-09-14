@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, Scissors, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/authContext";
 import { scrollToSection } from "@/lib/lenis";
-
+import ImageLogo from "../../assets/images/kabarbers-logo.jpg";
 const LINKS = [
   { to: "/schedule", label: "Schedule" },
   { to: "/book", label: "Book" },
@@ -68,8 +68,8 @@ export default function PublicNav() {
       className={cn(
         "fixed inset-x-0 top-0 z-50 transition-colors duration-200",
         scrolled || open
-          ? "border-b border-white/10 bg-zinc-950/90 backdrop-blur"
-          : "border-b border-transparent bg-gradient-to-b from-black/70 to-transparent",
+          ? "border-b border-cream-ink/10 bg-night/90 backdrop-blur"
+          : "bg-gradient-to-b from-night/80 to-transparent",
       )}
     >
       <nav
@@ -79,17 +79,21 @@ export default function PublicNav() {
         <button
           type="button"
           onClick={() => void navigate("/")}
-          className="flex min-h-11 items-center gap-2.5 rounded-lg text-left text-white"
+          className="flex min-h-11 items-center gap-2.5 rounded-lg text-left text-cream-ink"
           aria-label="Kabarbers home"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-white">
-            <Scissors className="h-4 w-4" aria-hidden="true" />
+          <span className="flex h-9 w-9 items-center justify-center text-cream-ink">
+            <img
+              src={ImageLogo}
+              className="rounded-lg ring-1 ring-cream-ink/25"
+              alt=""
+            />
           </span>
           <span className="leading-tight">
             <span className="font-display block text-lg tracking-wide uppercase">
               Kabarbers
             </span>
-            <span className="block text-[11px] text-zinc-400">
+            <span className="block text-[11px] text-sand-muted">
               Malolos · By appointment
             </span>
           </span>
@@ -100,7 +104,7 @@ export default function PublicNav() {
             <Link
               key={l.label}
               to={l.to}
-              className="rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-muted transition-colors hover:bg-cream-ink/10 hover:text-cream-ink"
             >
               {l.label}
             </Link>
@@ -108,21 +112,21 @@ export default function PublicNav() {
           <a
             href="#find-us"
             onClick={handleFindUs}
-            className="rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+            className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-muted transition-colors hover:bg-cream-ink/10 hover:text-cream-ink"
           >
             Find Us
           </a>
           {isOwner ? (
             <Link
               to="/dashboard"
-              className="rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-sand-muted transition-colors hover:bg-cream-ink/10 hover:text-cream-ink"
             >
               Dashboard
             </Link>
           ) : null}
           <Link
             to="/book"
-            className="ml-2 inline-flex min-h-11 items-center rounded-xl bg-accent-deep px-5 text-sm font-semibold whitespace-nowrap text-white shadow-lg shadow-orange-950/40 transition-transform hover:bg-orange-500 active:scale-[0.98]"
+            className="ml-2 inline-flex min-h-11 items-center rounded-xl bg-accent-deep px-5 text-sm font-semibold whitespace-nowrap text-cream-ink shadow-lg shadow-night transition-transform hover:bg-oxblood-bright active:scale-[0.98]"
           >
             Book Appointment
           </Link>
@@ -134,7 +138,7 @@ export default function PublicNav() {
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-label={open ? "Close menu" : "Open menu"}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-white hover:bg-white/10"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-cream-ink hover:bg-cream-ink/10"
           >
             {open ? (
               <X className="h-5 w-5" aria-hidden="true" />
@@ -145,14 +149,14 @@ export default function PublicNav() {
         </div>
       </nav>
 
-        {open ? (
-        <div className="border-t border-white/10 bg-zinc-950/95 px-4 pt-2 pb-4 backdrop-blur md:hidden">
+      {open ? (
+        <div className="border-t border-cream-ink/10 bg-night/95 px-4 pt-2 pb-4 backdrop-blur md:hidden">
           {LINKS.map((l) => (
             <Link
               key={l.label}
               to={l.to}
               onClick={() => setOpen(false)}
-              className="block min-h-11 rounded-lg px-3 py-3 text-sm font-medium text-zinc-200 hover:bg-white/10"
+              className="block min-h-11 rounded-lg px-3 py-3 text-sm font-medium text-cream-ink/85 hover:bg-cream-ink/10"
             >
               {l.label}
             </Link>
@@ -160,7 +164,7 @@ export default function PublicNav() {
           <a
             href="#find-us"
             onClick={handleFindUs}
-            className="block min-h-11 rounded-lg px-3 py-3 text-sm font-medium text-zinc-200 hover:bg-white/10"
+            className="block min-h-11 rounded-lg px-3 py-3 text-sm font-medium text-cream-ink/85 hover:bg-cream-ink/10"
           >
             Find Us
           </a>
@@ -168,7 +172,7 @@ export default function PublicNav() {
             <Link
               to="/dashboard"
               onClick={() => setOpen(false)}
-              className="block min-h-11 rounded-lg px-3 py-3 text-sm font-medium text-zinc-200 hover:bg-white/10"
+              className="block min-h-11 rounded-lg px-3 py-3 text-sm font-medium text-cream-ink/85 hover:bg-cream-ink/10"
             >
               Dashboard
             </Link>
@@ -176,7 +180,7 @@ export default function PublicNav() {
           <Link
             to="/book"
             onClick={() => setOpen(false)}
-            className="mt-2 flex min-h-12 items-center justify-center rounded-xl bg-accent-deep text-sm font-semibold whitespace-nowrap text-white"
+            className="mt-2 flex min-h-12 items-center justify-center rounded-xl bg-accent-deep text-sm font-semibold whitespace-nowrap text-cream-ink"
           >
             Book Appointment
           </Link>

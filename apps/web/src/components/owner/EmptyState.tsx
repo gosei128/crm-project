@@ -19,7 +19,7 @@ export default function EmptyState({
   return (
     <Card>
       <CardContent className="flex flex-col items-center py-10 text-center">
-        <div className="text-slate-300">
+        <div className="text-brass">
           {icon ?? <CalendarX className="h-10 w-10" aria-hidden="true" />}
         </div>
         <p className="mt-3 text-sm font-medium">{title}</p>
@@ -29,7 +29,7 @@ export default function EmptyState({
           </p>
         )}
         {actionLabel && onAction && (
-          <Button size="sm" className="mt-4 bg-accent-deep text-white hover:bg-orange-500" onClick={onAction}>
+          <Button size="sm" className="mt-4 bg-accent-deep text-cream-ink hover:bg-oxblood-bright" onClick={onAction}>
             {actionLabel}
           </Button>
         )}

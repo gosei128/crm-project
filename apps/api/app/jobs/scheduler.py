@@ -9,6 +9,7 @@ Jobs run via APScheduler (in-process) and handle:
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -34,17 +35,32 @@ def _get_db() -> Session:
 
 
 def expire_pending_bookings() -> None:
-    """Move PENDING → EXPIRED if created >15 min ago and no downpayment confirmed."""
+    """Move PENDING → EXPIRED.
+
+    Two cases:
+    - No proof uploaded and created >15 min ago (abandoned hold).
+    - Slot already ended, proof or not (an unconfirmed hold must never
+      squat its slot in the partial unique index forever).
+    Bookings with proof uploaded are otherwise spared so the owner can
+    review at leisure — only the owner's confirm-payment flips them BOOKED.
+    """
     db = _get_db()
     try:
-        cutoff = datetime.utcnow() - timedelta(minutes=PENDING_TTL_MINUTES)
+        now = datetime.utcnow()
+        cutoff = now - timedelta(minutes=PENDING_TTL_MINUTES)
         expired = (
             db.query(Booking)
             .filter(
                 Booking.status == BookingStatus.PENDING.value,
-                Booking.created_at < cutoff,
-                Booking.downpayment_status
-                != "confirmed",  # DownpaymentStatus.CONFIRMED.value
+                or_(
+                    and_(
+                        Booking.created_at < cutoff,
+                        Booking.payment_proof_url.is_(None),
+                        Booking.downpayment_status
+                        != "confirmed",  # DownpaymentStatus.CONFIRMED.value
+                    ),
+                    Booking.slot_end < now,
+                ),
             )
             .all()
         )

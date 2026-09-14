@@ -4,10 +4,13 @@ import { cn } from "@/lib/utils";
 
 const ACCENTS: Record<string, string> = {
   default: "text-foreground",
-  amber: "text-amber-700",
-  blue: "text-blue-700",
-  emerald: "text-emerald-700",
-  rose: "text-rose-700",
+  amber: "text-bronze",
+  blue: "text-oxblood",
+  emerald: "text-moss",
+  rose: "text-oxblood",
+  bronze: "text-bronze",
+  moss: "text-moss",
+  oxblood: "text-oxblood",
 };
 
 export default function StatCard({

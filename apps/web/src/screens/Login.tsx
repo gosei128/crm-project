@@ -60,7 +60,8 @@ const LoginScreen = () => {
     <main className="w-full min-h-[100dvh] flex justify-center items-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="font-bold text-2xl text-accent">
+          <p className="font-script text-2xl text-brass-deep">Kabarbers</p>
+          <CardTitle className="font-display mt-1 text-3xl tracking-wide uppercase">
             Owner Login
           </CardTitle>
           <CardDescription className="font-regular text-sm text-secondary-foreground">
@@ -99,7 +100,7 @@ const LoginScreen = () => {
             </div>
             <Button
               type="submit"
-              className="w-full mt-8 bg-accent-deep hover:bg-orange-500"
+              className="w-full mt-8 bg-accent-deep text-cream-ink shadow-[0_12px_30px_-10px_rgb(127_29_34/0.6)] hover:bg-oxblood-bright"
               disabled={busy}
             >
               {busy ? "Logging in…" : "Login"}

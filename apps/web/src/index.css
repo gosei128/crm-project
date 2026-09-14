@@ -2,14 +2,30 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource/lato";
-@import "@fontsource/anton";
+@import "@fontsource/rye";
+@import "@fontsource/yellowtail";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Lato", sans-serif;
-  --font-display: "Anton", "Oswald", "Arial Narrow", sans-serif;
+  --font-display: "Rye", "Alfa Slab One", Georgia, serif;
+  --font-script: "Yellowtail", "Segoe Script", cursive;
+  --color-brass: var(--brass);
+  --color-brass-deep: var(--brass-deep);
+  --color-oxblood: var(--oxblood);
+  --color-bronze: var(--bronze);
+  --color-moss: var(--moss);
+  --color-parchment: var(--parchment);
+  --color-cream: var(--cream);
+  --color-espresso: var(--espresso);
+  --color-night: var(--night);
+  --color-night-soft: var(--night-soft);
+  --color-cream-ink: var(--cream-ink);
+  --color-sand-muted: var(--sand-muted);
+  --color-brass-bright: var(--brass-bright);
+  --color-oxblood-bright: var(--oxblood-bright);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,79 +68,100 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.205 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(25.7% 0.01229 17.851);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: #1a1c1e;
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  /* Brand orange, two tiers (color lock: these are the ONLY oranges).
-     - --accent (vivid #ea580c): display type, icons, borders, dots. Never
-       behind body-size text (white on vivid is ~3.4:1, fails AA).
-     - --accent-deep (#c2410c): every button or badge that carries text.
-       White on deep is ~5.2:1, passes AA. */
-  --accent: #ea580c;
-  --accent-deep: #c2410c;
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* PREMIUM CREAM-VINTAGE LOCK: the ONLY brand colors.
+     - Parchment/cream/espresso: surfaces + text.
+     - Brass (#8f6f1e): display type, script, icons, dots. Large display
+       text on parchment is ~4:1. Never behind body-size text.
+     - Oxblood (#7f1d22): every button or badge that carries text.
+       Cream on oxblood is ~9:1, passes AA.
+     - Bronze (#7c5c14): warnings + pending states. White is ~5.5:1.
+     - Moss (#3f6212): available/free states. White is ~6:1. */
+  --parchment: #f6f0e2;
+  --cream: #fdfaf2;
+  --espresso: #2b2118;
+  --brass: #8f6f1e;
+  --brass-deep: #6f5612;
+  --oxblood: #7f1d22;
+  --bronze: #7c5c14;
+  --moss: #3f6212;
+  /* Night-espresso islands (hero, footer, sticky bar). */
+  --night: #171008;
+  --night-soft: #221a10;
+  --cream-ink: #f3ead6;
+  --sand-muted: #b8a684;
+  --brass-bright: #d3a93f;
+  --oxblood-bright: #a52a30;
+
+  --background: var(--parchment);
+  --foreground: var(--espresso);
+  --card: var(--cream);
+  --card-foreground: var(--espresso);
+  --popover: var(--cream);
+  --popover-foreground: var(--espresso);
+  --primary: var(--espresso);
+  --primary-foreground: var(--parchment);
+  --secondary: #ece3cd;
+  --secondary-foreground: var(--espresso);
+  --muted: #ece3cd;
+  --muted-foreground: #6f5f4b;
+  --accent: var(--brass);
+  --accent-deep: var(--oxblood);
+  --accent-foreground: var(--cream);
+  --destructive: var(--oxblood);
+  --border: #e0d4b8;
+  --input: #d8cba9;
+  --ring: var(--brass);
+  --chart-1: var(--brass);
+  --chart-2: var(--oxblood);
+  --chart-3: var(--moss);
+  --chart-4: var(--bronze);
+  --chart-5: #5b4a36;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: var(--cream);
+  --sidebar-foreground: var(--espresso);
+  --sidebar-primary: var(--espresso);
+  --sidebar-primary-foreground: var(--parchment);
+  --sidebar-accent: #efe6cf;
+  --sidebar-accent-foreground: var(--espresso);
+  --sidebar-border: #e0d4b8;
+  --sidebar-ring: var(--brass);
 }
 
+/* Night-espresso islands (hero, footer, sticky bar): apply `dark` class on
+   the container so shadcn `dark:` variants and these tokens kick in. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: #ea580c;
-  --accent-deep: #c2410c;
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #171008;
+  --foreground: #f3ead6;
+  --card: #221a10;
+  --card-foreground: #f3ead6;
+  --popover: #221a10;
+  --popover-foreground: #f3ead6;
+  --primary: #f3ead6;
+  --primary-foreground: #221a10;
+  --secondary: #2e2414;
+  --secondary-foreground: #f3ead6;
+  --muted: #2e2414;
+  --muted-foreground: #b8a684;
+  --accent: #d3a93f;
+  --accent-deep: #a52a30;
+  --accent-foreground: #fdfaf2;
+  --destructive: #c0504f;
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: #d3a93f;
+  --chart-1: #d3a93f;
+  --chart-2: #c0504f;
+  --chart-3: #8aa653;
+  --chart-4: #c99b3f;
+  --chart-5: #8a7554;
+  --sidebar: #221a10;
+  --sidebar-foreground: #f3ead6;
+  --sidebar-primary: #d3a93f;
+  --sidebar-primary-foreground: #221a10;
+  --sidebar-accent: #2e2414;
+  --sidebar-accent-foreground: #f3ead6;
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: #d3a93f;
 }
 
 @layer base {
@@ -132,10 +169,33 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    /* Faint paper grain over parchment — pure CSS, near-zero cost. */
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgb(255 255 255 / 0.5), transparent),
+      radial-gradient(ellipse 60% 50% at 50% 110%, rgb(120 90 30 / 0.06), transparent);
   }
   html {
     @apply font-sans;
+  }
+  ::selection {
+    background: rgb(143 111 30 / 0.28);
+  }
+  /* Slim warm scrollbar (webkit) for a finished feel. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #c9b98f;
+    border-radius: 8px;
+    border: 2px solid var(--parchment);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--brass);
   }
   /* Pointer affordance on every clickable element (ux checklist) */
   button:not(:disabled),
@@ -168,6 +228,10 @@
     font-family: var(--font-display);
     letter-spacing: 0.01em;
   }
+  .font-script {
+    font-family: var(--font-script);
+    font-weight: 400;
+  }
   .animate-enter {
     animation: owner-enter 220ms ease-out both;
   }
@@ -189,31 +253,24 @@
   }
 }
 
-/* Scroll reveal (progressive enhancement): rises as a section enters the
-   viewport. Unsupported browsers ignore animation-timeline and render the
-   final state. Honors prefers-reduced-motion via the block below. */
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(28px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+/* Scroll reveal: fade + slide-up as a section enters the viewport.
+   `useScrollReveal` adds `.is-visible` via IntersectionObserver (once per
+   element). `.reveal-1` staggers 120ms behind `.reveal`. */
+.reveal,
+.reveal-1 {
+  opacity: 0;
+  transform: translateY(32px);
+  transition:
+    opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-
-@media (prefers-reduced-motion: no-preference) {
-  .reveal {
-    animation: rise-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    animation-timeline: view();
-    animation-range: entry 0% entry 55%;
-  }
-  .reveal-1 {
-    animation: rise-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    animation-timeline: view();
-    animation-range: entry 10% entry 65%;
-  }
+.reveal-1 {
+  transition-delay: 120ms;
+}
+.reveal.is-visible,
+.reveal-1.is-visible {
+  opacity: 1;
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -224,6 +281,9 @@
   .reveal,
   .reveal-1 {
     animation: none;
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
   *,
   *::before,
@@ -269,8 +329,8 @@ html.lenis body {
   height: 28px;
   margin: 4px;
   border-radius: 9999px;
-  background: #ea580c;
-  border: 3px solid #fff;
+  background: #7f1d22;
+  border: 3px solid #fdfaf2;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
   position: relative;
 }
@@ -279,5 +339,5 @@ html.lenis body {
   position: absolute;
   inset: -10px;
   border-radius: 9999px;
-  border: 2px solid rgb(234 88 12 / 0.35);
+  border: 2px solid rgb(127 29 34 / 0.35);
 }

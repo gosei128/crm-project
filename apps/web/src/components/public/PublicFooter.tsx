@@ -9,11 +9,11 @@ import {
 export default function PublicFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer className="border-t border-white/10 bg-black text-zinc-400">
+    <footer className="border-t border-brass/25 bg-night text-sand-muted">
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-12 sm:grid-cols-3">
         <div>
-          <p className="flex items-center gap-2 text-white">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-white">
+          <p className="flex items-center gap-2 text-cream-ink">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brass/20 text-brass-bright">
               <Scissors className="h-4 w-4" aria-hidden="true" />
             </span>
             <span className="font-display text-xl tracking-wide uppercase">
@@ -26,7 +26,7 @@ export default function PublicFooter() {
           </p>
         </div>
         <div>
-          <p className="text-sm font-semibold tracking-wide text-white uppercase">
+          <p className="text-sm font-semibold tracking-wide text-cream-ink uppercase">
             Visit
           </p>
           <p className="mt-3 flex items-start gap-2 text-sm">
@@ -41,31 +41,31 @@ export default function PublicFooter() {
             href={shopDirectionsUrl()}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-block text-sm font-medium text-orange-400 hover:text-orange-300 hover:underline"
+            className="mt-2 inline-block text-sm font-medium text-brass-bright hover:text-cream-ink hover:underline"
           >
             Get directions →
           </a>
         </div>
         <div>
-          <p className="text-sm font-semibold tracking-wide text-white uppercase">
+          <p className="text-sm font-semibold tracking-wide text-cream-ink uppercase">
             Book
           </p>
           <nav aria-label="Footer" className="mt-3 flex flex-col gap-1 text-sm">
             <Link
               to="/schedule"
-              className="w-fit rounded px-1 py-1.5 hover:text-white hover:underline"
+              className="w-fit rounded px-1 py-1.5 hover:text-cream-ink hover:underline"
             >
               Schedule
             </Link>
             <Link
               to="/book"
-              className="w-fit rounded px-1 py-1.5 hover:text-white hover:underline"
+              className="w-fit rounded px-1 py-1.5 hover:text-cream-ink hover:underline"
             >
               Book Appointment
             </Link>
             <Link
               to="/login"
-              className="w-fit rounded px-1 py-1.5 hover:text-white hover:underline"
+              className="w-fit rounded px-1 py-1.5 hover:text-cream-ink hover:underline"
             >
               Owner login
             </Link>
@@ -76,7 +76,7 @@ export default function PublicFooter() {
           </p>
         </div>
       </div>
-      <div className="border-t border-white/10">
+      <div className="border-t border-cream-ink/10">
         <p className="mx-auto w-full max-w-6xl px-4 py-4 text-xs">
           © {year} {SHOP_LOCATION.name}. All cuts reserved.
         </p>

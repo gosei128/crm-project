@@ -224,9 +224,9 @@ export default function ShopControls() {
         </Alert>
       )}
       {notice && (
-        <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+        <Alert className="border-moss/40 bg-moss/[0.08] text-espresso">
           <CircleCheck aria-hidden="true" />
-          <AlertDescription className="text-emerald-800">
+          <AlertDescription className="text-moss">
             {notice}
           </AlertDescription>
         </Alert>
@@ -237,8 +237,8 @@ export default function ShopControls() {
           {Array.from({ length: 3 }).map((_, i) => (
             <Card key={i} className="motion-reduce:animate-none">
               <CardContent className="animate-pulse py-5">
-                <div className="mb-2 h-5 w-40 rounded bg-slate-100" />
-                <div className="h-3 w-full rounded bg-slate-100" />
+                <div className="mb-2 h-5 w-40 rounded bg-espresso/10" />
+                <div className="h-3 w-full rounded bg-espresso/10" />
               </CardContent>
             </Card>
           ))}
@@ -263,15 +263,15 @@ export default function ShopControls() {
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
                     shopOpen
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-slate-100 text-slate-600",
+                      ? "bg-moss/15 text-moss"
+                      : "bg-espresso/10 text-espresso/60",
                   )}
                   role="status"
                 >
                   <span
                     className={cn(
                       "h-1.5 w-1.5 rounded-full",
-                      shopOpen ? "bg-emerald-500" : "bg-slate-400",
+                      shopOpen ? "bg-moss" : "bg-espresso/40",
                     )}
                     aria-hidden="true"
                   />
@@ -453,7 +453,7 @@ export default function ShopControls() {
                         (grouped[idx] ?? []).map((a) => (
                           <span
                             key={a.id}
-                            className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-xs tabular-nums"
+                            className="inline-flex items-center gap-1 rounded bg-espresso/[0.06] px-2 py-0.5 text-xs tabular-nums"
                           >
                             {a.start_time}-{a.end_time}
                             <button
@@ -463,7 +463,7 @@ export default function ShopControls() {
                               }
                               disabled={deletingId === a.id}
                               aria-label={`Remove hours ${a.start_time} to ${a.end_time} on ${name}`}
-                              className="rounded p-0.5 text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-50"
+                              className="rounded p-0.5 text-oxblood transition-colors hover:bg-oxblood/10 disabled:opacity-50"
                             >
                               <X className="h-3 w-3" aria-hidden="true" />
                             </button>
@@ -548,10 +548,10 @@ export default function ShopControls() {
                   No rules configured yet.
                 </p>
               ) : (
-                <ol className="list-inside list-decimal space-y-1.5 text-sm text-slate-700">
+                <ol className="list-inside list-decimal space-y-1.5 text-sm text-espresso/75">
                   {rules.map((rule) => (
                     <li key={rule.id}>
-                      <span className="font-semibold text-slate-900">{rule.title}</span>:{" "}
+                      <span className="font-semibold text-espresso">{rule.title}</span>:{" "}
                       {rule.text}
                     </li>
                   ))}

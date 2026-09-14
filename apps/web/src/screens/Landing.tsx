@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   BadgeCheck,
   CalendarCheck,
-  ChevronDown,
   MapPin,
   Navigation,
   QrCode,
@@ -14,6 +13,13 @@ import PublicNav, { NavSentinel } from "@/components/public/PublicNav";
 import PublicFooter from "@/components/public/PublicFooter";
 import Hero from "@/screens/Hero";
 import { Button } from "@/components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
 import {
   getShopRules,
   getShopStatus,
@@ -29,7 +35,6 @@ import {
   shopOsmUrl,
 } from "@/lib/shopLocation";
 import { HERO_FALLBACK_IMAGE } from "@/config/site";
-import HeroImage from "../assets/images/kabarbers.jpg";
 
 import { GALLERY_IMAGES } from "@/config/gallery";
 import { initLenis } from "@/lib/lenis";
@@ -78,6 +83,10 @@ export default function Landing() {
   // Buttery smooth scrolling, landing only. Destroyed on unmount so the
   // booking and dashboard pages keep native scroll.
   useEffect(() => initLenis(), []);
+
+  // Fade + slide-up per section as it enters the viewport. Re-scan when
+  // the async house-rules section mounts so it reveals too.
+  useScrollReveal([rules.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,7 +167,7 @@ export default function Landing() {
   ];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-parchment text-espresso">
       <PublicNav />
       <NavSentinel />
       <main className="pb-20 md:pb-0">
@@ -166,7 +175,7 @@ export default function Landing() {
 
         {/* Craft band: full-bleed photo, functional caption below */}
         <section aria-label="Inside the shop">
-          <div className="overflow-hidden border-y border-white/10">
+          <div className="overflow-hidden border-y border-espresso/10">
             <img
               src={HERO_FALLBACK_IMAGE}
               alt="Inside Kabarbers barbershop in Malolos"
@@ -177,7 +186,7 @@ export default function Landing() {
               }}
             />
           </div>
-          <p className="mx-auto w-full max-w-6xl px-4 pt-3 pb-10 text-sm text-zinc-500">
+          <p className="mx-auto w-full max-w-6xl px-4 pt-3 pb-10 text-sm text-espresso/55">
             Inside the shop on Sampaguita St, Malolos.
           </p>
         </section>
@@ -190,7 +199,7 @@ export default function Landing() {
           <h2 className="font-display max-w-xl text-4xl tracking-wide uppercase sm:text-5xl">
             Fresh from the chair
           </h2>
-          <p className="mt-3 max-w-md text-sm leading-relaxed text-zinc-400">
+          <p className="mt-3 max-w-md text-sm leading-relaxed text-espresso/65">
             Recent cuts from the shop. New photos land here after every busy
             week.
           </p>
@@ -200,7 +209,7 @@ export default function Landing() {
                 key={photo.src}
                 className={i === 0 ? "col-span-2 md:row-span-2" : undefined}
               >
-                <figure className="group h-full overflow-hidden rounded-2xl border border-white/10 bg-zinc-900">
+                <figure className="group h-full overflow-hidden rounded-2xl border border-espresso/10 bg-cream shadow-[0_2px_12px_-6px_rgb(43_33_24/0.25)]">
                   <img
                     src={photo.src}
                     alt={photo.alt}
@@ -229,33 +238,33 @@ export default function Landing() {
             <div>
               <h2 className="font-display text-4xl tracking-wide uppercase sm:text-5xl">
                 One chair.
-                <span className="block text-orange-500">Full routine.</span>
+                <span className="block text-oxblood">Full routine.</span>
               </h2>
-              <p className="mt-4 max-w-md text-base leading-relaxed text-zinc-400">
+              <p className="mt-4 max-w-md text-base leading-relaxed text-espresso/65">
                 {serviceName}, {durationMin} minutes shaped to your head, never
                 rushed between chairs.
               </p>
               <Link
                 to="/book"
-                className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-accent-deep px-7 text-sm font-bold whitespace-nowrap text-white transition-all hover:bg-orange-500 active:scale-[0.98]"
+                className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-accent-deep px-7 text-sm font-bold whitespace-nowrap text-white transition-all hover:bg-oxblood-bright active:scale-[0.98]"
               >
                 Book Appointment
               </Link>
             </div>
-            <ul className="divide-y divide-white/10 border-y border-white/10">
+            <ul className="divide-y divide-espresso/10 border-y border-espresso/10">
               {visitRows.map((row) => (
                 <li
                   key={row.title}
                   className="grid grid-cols-[auto_1fr] gap-4 py-5"
                 >
-                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500/15 text-orange-400">
+                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-brass/15 text-brass-deep">
                     <row.icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <span>
-                    <span className="block font-semibold text-white">
+                    <span className="block font-semibold text-espresso">
                       {row.title}
                     </span>
-                    <span className="mt-1 block max-w-md text-sm leading-relaxed text-zinc-400">
+                    <span className="mt-1 block max-w-md text-sm leading-relaxed text-espresso/65">
                       {row.text}
                     </span>
                   </span>
@@ -268,7 +277,7 @@ export default function Landing() {
         {/* Booking path: railed timeline, verb-led, no numerals */}
         <section
           aria-label="Booking path"
-          className="reveal border-y border-white/10 bg-zinc-900/40"
+          className="reveal border-y border-espresso/10 bg-cream/70"
         >
           <div className="mx-auto w-full max-w-6xl px-4 py-14">
             <h2 className="font-display max-w-xl text-4xl tracking-wide uppercase sm:text-5xl">
@@ -278,15 +287,15 @@ export default function Landing() {
               {moves.map((move) => (
                 <li
                   key={move.title}
-                  className="relative border-l-2 border-orange-500/60 pl-6"
+                  className="relative border-l-2 border-brass/70 pl-6"
                 >
-                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-950 text-orange-400">
+                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-tranparent border-brass-bright border text-brass-bright">
                     <move.icon className="h-5 w-5" aria-hidden="true" />
                   </span>
-                  <h3 className="mt-4 font-semibold text-white">
+                  <h3 className="mt-4 font-semibold text-espresso">
                     {move.title}
                   </h3>
-                  <p className="mt-1.5 max-w-xs text-sm leading-relaxed text-zinc-400">
+                  <p className="mt-1.5 max-w-xs text-sm leading-relaxed text-espresso/65">
                     {move.text}
                   </p>
                 </li>
@@ -305,13 +314,13 @@ export default function Landing() {
               <h2 className="font-display text-4xl tracking-wide uppercase sm:text-5xl">
                 Open chairs
               </h2>
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-zinc-400">
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-espresso/65">
                 Live from the shop book. Times update as chairs fill.
               </p>
             </div>
             <Link
               to="/schedule"
-              className="rounded-xl px-3 py-2.5 text-sm font-semibold whitespace-nowrap text-orange-400 hover:text-orange-300 hover:underline"
+              className="rounded-xl px-3 py-2.5 text-sm font-semibold whitespace-nowrap text-oxblood hover:text-brass-deep hover:underline"
             >
               Schedule
             </Link>
@@ -324,12 +333,12 @@ export default function Landing() {
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
-                  className="h-44 animate-pulse rounded-2xl border border-white/10 bg-zinc-900"
+                  className="h-44 animate-pulse rounded-2xl border border-espresso/10 bg-espresso/10"
                 />
               ))}
             </div>
           ) : previewDays.length === 0 ? (
-            <p className="mt-8 rounded-2xl border border-white/10 bg-zinc-900 p-6 text-sm text-zinc-400">
+            <p className="mt-8 rounded-2xl border border-espresso/10 bg-cream p-6 text-sm text-espresso/65">
               No schedule published yet. Check back soon.
             </p>
           ) : (
@@ -339,23 +348,19 @@ export default function Landing() {
                 return (
                   <article
                     key={d.date}
-                    className="rounded-2xl border border-white/10 bg-zinc-900/80 p-5"
+                    className="rounded-2xl border border-espresso/10 bg-cream p-5 shadow-[0_2px_12px_-6px_rgb(43_33_24/0.25)]"
                   >
                     <div className="flex items-baseline justify-between gap-2">
                       <Link
                         to={`/book?date=${d.date}`}
-                        className="font-semibold whitespace-nowrap text-white hover:text-orange-300 hover:underline"
+                        className="font-semibold whitespace-nowrap text-espresso hover:text-oxblood hover:underline"
                       >
                         {dayLabel(d.date)}
                       </Link>
-                      <span className="text-xs font-medium whitespace-nowrap text-zinc-500 tabular-nums">
-                        {free.length === 0
-                          ? "Fully booked"
-                          : `${free.length} open`}
-                      </span>
+                      <span className="text-xs font-medium whitespace-nowrap text-espresso/55 tabular-nums"></span>
                     </div>
                     {free.length === 0 ? (
-                      <p className="mt-3 text-sm text-zinc-500">
+                      <p className="mt-3 text-sm text-espresso/55">
                         Try another day.
                       </p>
                     ) : (
@@ -364,7 +369,7 @@ export default function Landing() {
                           <li key={s.time}>
                             <Link
                               to={`/book?date=${d.date}&time=${encodeURIComponent(s.time)}`}
-                              className="inline-block min-h-9 rounded-xl border border-orange-500/30 bg-orange-500/10 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-orange-100 tabular-nums transition-colors hover:bg-orange-500/25"
+                              className="inline-block min-h-9 rounded-xl border border-moss/30 bg-brass-bright/10 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-moss tabular-nums transition-colors hover:bg-moss/20"
                             >
                               {slotLabel(s.time)}
                             </Link>
@@ -383,36 +388,28 @@ export default function Landing() {
         {rules.length > 0 ? (
           <section
             aria-label="House rules"
-            className="reveal border-y border-white/10 bg-zinc-900/40"
+            className="reveal border-y border-espresso/10 bg-cream/70"
           >
             <div className="mx-auto w-full max-w-6xl px-4 py-14">
               <h2 className="font-display text-4xl tracking-wide uppercase sm:text-5xl">
                 House rules
               </h2>
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-zinc-400">
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-espresso/65">
                 Agreed again at booking. Short version: deposits lock chairs,
                 lateness loses them.
               </p>
-              <div className="mt-8 overflow-hidden rounded-2xl border border-white/10">
-                {rules.map((rule, i) => (
-                  <details
-                    key={rule.id}
-                    open={i === 0}
-                    className="group border-b border-white/10 bg-zinc-950 last:border-0"
-                  >
-                    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
-                      {rule.title}
-                      <ChevronDown
-                        className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180"
-                        aria-hidden="true"
-                      />
-                    </summary>
-                    <p className="max-w-2xl px-5 pb-5 text-sm leading-relaxed text-zinc-400">
-                      {rule.text}
-                    </p>
-                  </details>
+              <Accordion
+                type="multiple"
+                defaultValue={rules[0] ? [`rule-${rules[0].id}`] : []}
+                className="mt-8 overflow-hidden rounded-2xl border border-espresso/10"
+              >
+                {rules.map((rule) => (
+                  <AccordionItem key={rule.id} value={`rule-${rule.id}`}>
+                    <AccordionTrigger>{rule.title}</AccordionTrigger>
+                    <AccordionContent>{rule.text}</AccordionContent>
+                  </AccordionItem>
                 ))}
-              </div>
+              </Accordion>
             </div>
           </section>
         ) : null}
@@ -424,14 +421,14 @@ export default function Landing() {
           className="reveal mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-14"
         >
           <h2 className="font-display text-4xl tracking-wide uppercase sm:text-5xl">
-            {shopName} <span className="text-orange-500">in Malolos</span>
+            {shopName} <span className="text-oxblood">in Malolos</span>
           </h2>
           <div className="mt-8 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="min-h-64 overflow-hidden rounded-2xl border border-white/10">
+            <div className="min-h-64 overflow-hidden rounded-2xl border border-espresso/10">
               <Suspense
                 fallback={
                   <div
-                    className="h-64 w-full animate-pulse bg-zinc-900 sm:h-80"
+                    className="h-64 w-full animate-pulse bg-espresso/10 sm:h-80"
                     role="status"
                     aria-label="Loading map"
                   />
@@ -440,30 +437,30 @@ export default function Landing() {
                 <ShopMap />
               </Suspense>
             </div>
-            <div className="flex flex-col justify-between gap-6 rounded-2xl border border-white/10 bg-zinc-900/80 p-6">
+            <div className="flex flex-col justify-between gap-6 rounded-2xl border border-espresso/10 bg-cream p-6 shadow-[0_2px_12px_-6px_rgb(43_33_24/0.25)]">
               <div>
                 <p className="flex items-start gap-2 text-sm">
                   <MapPin
-                    className="mt-0.5 h-4 w-4 shrink-0 text-orange-400"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-brass-deep"
                     aria-hidden="true"
                   />
                   <span>
-                    <span className="font-semibold text-white">
+                    <span className="font-semibold text-accent">
                       {SHOP_LOCATION.name}
                     </span>
-                    <span className="mt-1 block text-zinc-400">
+                    <span className="mt-1 block text-espresso/65">
                       {shopAddressSingleLine()}
                     </span>
                   </span>
                 </p>
-                <p className="mt-4 max-w-xs text-sm leading-relaxed text-zinc-500">
+                <p className="mt-4 max-w-xs text-sm leading-relaxed text-espresso/55">
                   Strictly by appointment. Book before you travel so the chair
                   is ready.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  className="bg-accent-deep font-semibold whitespace-nowrap text-white hover:bg-orange-500"
+                  className="bg-accent-deep font-semibold whitespace-nowrap text-white hover:bg-oxblood-bright"
                   render={
                     <a
                       href={shopDirectionsUrl()}
@@ -477,7 +474,7 @@ export default function Landing() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="border-white/15 bg-transparent whitespace-nowrap text-white hover:bg-white/10 hover:text-white"
+                  className="border-espresso/20 bg-transparent whitespace-nowrap text-espresso hover:bg-espresso/5 hover:text-espresso"
                   render={
                     <a
                       href={shopOsmUrl()}
@@ -498,27 +495,27 @@ export default function Landing() {
           aria-label="Book now"
           className="mx-auto w-full max-w-6xl px-4 pb-16"
         >
-          <div className="reveal relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-700 to-orange-500 p-8 sm:p-12">
+          <div className="reveal relative overflow-hidden rounded-2xl bg-oxblood p-8  sm:p-12">
             <Scissors
               aria-hidden="true"
-              className="absolute -right-6 -bottom-6 h-48 w-48 rotate-12 text-black/10"
+              className="absolute -right-6 -bottom-6 h-48 w-48 rotate-12 text-cream/15"
             />
-            <h2 className="font-display max-w-lg text-4xl tracking-wide text-white uppercase sm:text-5xl">
+            <h2 className="font-display max-w-lg text-4xl tracking-wide text-cream uppercase sm:text-5xl">
               Your chair is waiting
             </h2>
-            <p className="mt-3 max-w-md text-base leading-relaxed text-orange-50">
+            <p className="mt-3 max-w-md text-base leading-relaxed text-cream/85">
               Chairs go to whoever pays first. Do not watch Saturday disappear.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link
                 to="/book"
-                className="inline-flex min-h-12 items-center justify-center rounded-xl bg-zinc-950 px-8 text-sm font-bold whitespace-nowrap text-white hover:bg-black"
+                className="z-10 inline-flex min-h-12 items-center justify-center rounded-xl bg-night px-8 text-sm font-bold whitespace-nowrap text-cream-ink hover:bg-espresso"
               >
                 Book Appointment
               </Link>
               <Link
                 to="/schedule"
-                className="inline-flex min-h-12 items-center justify-center rounded-xl px-4 text-sm font-semibold whitespace-nowrap text-white hover:underline"
+                className="inline-flex min-h-12 items-center justify-center rounded-xl px-4 text-sm font-semibold whitespace-nowrap text-cream hover:underline"
               >
                 Schedule
               </Link>
@@ -528,10 +525,10 @@ export default function Landing() {
       </main>
 
       {/* Sticky mobile booking bar */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-zinc-950/90 px-4 py-3 backdrop-blur md:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-cream-ink/10 bg-night/95 px-4 py-3 backdrop-blur md:hidden">
         <Link
           to="/book"
-          className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-accent-deep text-sm font-bold whitespace-nowrap text-white active:scale-[0.99]"
+          className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-accent-deep text-sm font-bold whitespace-nowrap text-cream-ink active:scale-[0.99]"
         >
           <CalendarCheck className="h-4 w-4" aria-hidden="true" />
           Book Appointment

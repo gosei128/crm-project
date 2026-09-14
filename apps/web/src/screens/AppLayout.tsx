@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import Logo from "../../src/assets/images/kabarbers-logo.jpg";
 import {
   CalendarCheckIcon,
   LayoutDashboardIcon,
   LogOutIcon,
-  Scissors,
   SlidersHorizontalIcon,
 } from "lucide-react";
 import {
@@ -69,9 +69,7 @@ function OwnerNavButton({ item, active }: { item: NavItem; active: boolean }) {
       {typeof item.badge === "number" && item.badge > 0 && (
         <SidebarMenuBadge>
           {item.badge}
-          <span className="sr-only">
-            {item.badgeLabel ?? "pending items"}
-          </span>
+          <span className="sr-only">{item.badgeLabel ?? "pending items"}</span>
         </SidebarMenuBadge>
       )}
     </SidebarMenuItem>
@@ -112,8 +110,8 @@ function OwnerSidebar({
           className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 text-left transition-colors duration-200 hover:bg-sidebar-accent"
           aria-label="Kabarbers owner workspace. Go to dashboard"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <Scissors className="h-4 w-4" aria-hidden="true" />
+          <span className="flex h-12 w-12 shrink-0 border items-center justify-center rounded-lg text-brass-bright">
+            <img src={Logo} alt="" className="rounded-xl " />
           </span>
           <span className="min-w-0 group-data-[collapsible=icon]:hidden">
             <span className="block truncate text-sm leading-tight font-semibold">
@@ -245,8 +243,8 @@ const AppLayout = () => {
               className={cn(
                 "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
                 shopOpen
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-slate-100 text-slate-600",
+                  ? "bg-moss/15 text-moss"
+                  : "bg-espresso/10 text-espresso/60",
               )}
               role="status"
               title={
@@ -258,7 +256,7 @@ const AppLayout = () => {
               <span
                 className={cn(
                   "h-1.5 w-1.5 rounded-full",
-                  shopOpen ? "bg-emerald-500" : "bg-slate-400",
+                  shopOpen ? "bg-moss" : "bg-espresso/40",
                 )}
                 aria-hidden="true"
               />

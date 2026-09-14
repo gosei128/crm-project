@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,12 +19,15 @@ import {
   FileText,
   Phone,
   Receipt,
+  Trash2,
   User,
   Users,
 } from "lucide-react";
 import type { Booking } from "@/lib/api";
 import { formatDateTime, formatSlotRange } from "@/lib/format";
 import { isImageUrl } from "@/lib/media";
+import { useConfirmTap } from "@/hooks/useConfirmTap";
+import { TERMINAL_STATUSES } from "./bookingStatus";
 import BookingActions from "./BookingActions";
 import StatusBadge from "./StatusBadge";
 
@@ -66,6 +69,8 @@ export default function BookingDetailsModal({
   onMarkArrived,
   onMarkComplete,
   onMarkNoShow,
+  onCancel,
+  onDelete,
 }: {
   booking: Booking | null;
   serviceName?: string;
@@ -76,6 +81,8 @@ export default function BookingDetailsModal({
   onMarkArrived: (b: Booking) => void;
   onMarkComplete: (b: Booking) => void;
   onMarkNoShow: (b: Booking) => void;
+  onCancel: (b: Booking) => void;
+  onDelete: (b: Booking) => void;
 }) {
   // Track *which* booking was copied — resets per booking, no effect needed.
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -93,6 +100,11 @@ export default function BookingDetailsModal({
   const trimmedProof = booking?.payment_proof_url?.trim();
   const proofUrl = trimmedProof ? trimmedProof : null;
 
+  const { armed, tap, reset } = useConfirmTap();
+  useEffect(() => {
+    reset();
+  }, [booking?.id, reset]);
+
   return (
     <Dialog
       open={booking !== null}
@@ -106,7 +118,7 @@ export default function BookingDetailsModal({
             <DialogHeader>
               <div className="flex flex-wrap items-center gap-2">
                 <DialogTitle>{serviceName}</DialogTitle>
-                <StatusBadge status={booking.status} />
+                <StatusBadge status={booking.status} proofUrl={booking.payment_proof_url} />
                 <Badge variant="outline" className="text-xs capitalize">
                   {booking.downpayment_status.replace(/_/g, " ")}
                 </Badge>
@@ -180,7 +192,7 @@ export default function BookingDetailsModal({
                   className="rounded p-1 transition-colors hover:bg-muted hover:text-foreground"
                 >
                   {copiedId === booking.id ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                    <Check className="h-3.5 w-3.5 text-moss" aria-hidden="true" />
                   ) : (
                     <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
@@ -209,7 +221,7 @@ export default function BookingDetailsModal({
                       href={proofUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block rounded-lg border p-3 text-xs break-all text-blue-600 hover:underline"
+                      className="block rounded-lg border p-3 text-xs break-all text-oxblood hover:underline"
                     >
                       {proofUrl}
                     </a>
@@ -218,7 +230,7 @@ export default function BookingDetailsModal({
                   <p
                     className={
                       booking.status === "pending"
-                        ? "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                        ? "rounded-md border border-bronze/40 bg-bronze/[0.08] px-3 py-2 text-sm text-bronze"
                         : "text-sm text-muted-foreground"
                     }
                   >
@@ -247,6 +259,22 @@ export default function BookingDetailsModal({
               <Button variant="ghost" onClick={onClose}>
                 Close
               </Button>
+              {TERMINAL_STATUSES.has(booking.status) && (
+                <Button
+                  variant={armed ? "destructive" : "ghost"}
+                  onClick={() => tap(() => onDelete(booking))}
+                  disabled={actionLoading !== null}
+                  title="Delete this record permanently"
+                  aria-label={
+                    armed
+                      ? "Tap again to delete this booking permanently"
+                      : "Delete this booking"
+                  }
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  {armed ? "Sure?" : "Delete"}
+                </Button>
+              )}
               <BookingActions
                 booking={booking}
                 actionLoading={actionLoading}
@@ -254,6 +282,7 @@ export default function BookingDetailsModal({
                 onMarkArrived={onMarkArrived}
                 onMarkComplete={onMarkComplete}
                 onMarkNoShow={onMarkNoShow}
+                onCancel={onCancel}
                 className="flex-1 sm:flex-none"
               />
             </DialogFooter>

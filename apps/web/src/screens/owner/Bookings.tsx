@@ -20,7 +20,9 @@ import ProofPreview from "@/components/owner/ProofPreview";
 import { useOwnerBookings } from "@/hooks/useOwnerBookings";
 import {
   getSingletonService,
+  ownerCancelBooking,
   ownerConfirmPayment,
+  ownerDeleteBooking,
   ownerMarkArrived,
   ownerMarkComplete,
   ownerMarkNoShow,
@@ -33,6 +35,7 @@ const STATUS_OPTIONS = [
   { value: "booked", label: "Booked" },
   { value: "complete", label: "Complete" },
   { value: "expired", label: "Expired" },
+  { value: "cancelled", label: "Cancelled" },
   { value: "cancelled_no_show", label: "Cancelled (no-show)" },
   { value: "cancelled_late", label: "Cancelled (late)" },
 ];
@@ -81,13 +84,26 @@ export default function Bookings() {
       .catch(() => {});
   }, []);
 
-  const { bookings, loading, error, actionLoading, refresh, runAction } =
+  const { bookings, loading, error, setError, actionLoading, refresh, runAction } =
     useOwnerBookings({ status: statusFilter, date: dateFilter });
 
   /** Run an action from the details modal, then refresh the modal in place. */
   async function handleModalAction(b: Booking, fn: () => Promise<Booking>) {
     const updated = await runAction(b.id, fn);
     if (updated) setDetailsBooking(updated);
+  }
+
+  /** Trash a terminal record, then close any sheet/modal showing it. */
+  async function handleDeleteBooking(b: Booking) {
+    try {
+      await ownerDeleteBooking(b.id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+      return;
+    }
+    if (detailsBooking?.id === b.id) setDetailsBooking(null);
+    if (preview?.id === b.id) setPreview(null);
+    await refresh();
   }
 
   const filtered = useMemo(() => {
@@ -244,8 +260,8 @@ export default function Bookings() {
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} className="motion-reduce:animate-none">
               <CardContent className="animate-pulse py-4">
-                <div className="mb-2 h-5 w-32 rounded bg-slate-100" />
-                <div className="h-3 w-full rounded bg-slate-100" />
+                <div className="mb-2 h-5 w-32 rounded bg-espresso/10" />
+                <div className="h-3 w-full rounded bg-espresso/10" />
               </CardContent>
             </Card>
           ))}
@@ -291,6 +307,10 @@ export default function Bookings() {
                 onMarkNoShow={(x) =>
                   void runAction(x.id, () => ownerMarkNoShow(x.id))
                 }
+                onCancel={(x) =>
+                  void runAction(x.id, () => ownerCancelBooking(x.id))
+                }
+                onDelete={(x) => void handleDeleteBooking(x)}
                 onViewProof={setPreview}
                 onViewDetails={setDetailsBooking}
               />
@@ -299,7 +319,12 @@ export default function Bookings() {
         </div>
       )}
 
-      <ProofPreview booking={preview} onClose={() => setPreview(null)} />
+      <ProofPreview
+        booking={preview}
+        onClose={() => setPreview(null)}
+        onCancel={(b) => void runAction(b.id, () => ownerCancelBooking(b.id))}
+        actionLoading={actionLoading}
+      />
       <BookingDetailsModal
         booking={detailsBooking}
         serviceName={serviceName}
@@ -318,6 +343,10 @@ export default function Bookings() {
         onMarkNoShow={(b) =>
           void handleModalAction(b, () => ownerMarkNoShow(b.id))
         }
+        onCancel={(b) =>
+          void handleModalAction(b, () => ownerCancelBooking(b.id))
+        }
+        onDelete={(b) => void handleDeleteBooking(b)}
       />
     </div>
   );
