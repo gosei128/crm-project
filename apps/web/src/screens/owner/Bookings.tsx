@@ -33,7 +33,7 @@ const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "pending", label: "Pending" },
   { value: "booked", label: "Booked" },
-  { value: "complete", label: "Complete" },
+  { value: "complete", label: "Haircut Done" },
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
   { value: "cancelled_no_show", label: "Cancelled (no-show)" },
@@ -109,7 +109,7 @@ export default function Bookings() {
   const filtered = useMemo(() => {
     if (!deferredQuery) return bookings;
     return bookings.filter((b) =>
-      [b.customer_name, b.customer_phone, b.notes, b.id]
+      [b.customer_name, b.customer_phone, b.notes, b.id, b.reference_code]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -174,7 +174,7 @@ export default function Bookings() {
               <Input
                 id="booking-search"
                 type="search"
-                placeholder="Name, phone, or booking ID…"
+                placeholder="Name, phone, ref code, or booking ID…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="pr-8 pl-9"

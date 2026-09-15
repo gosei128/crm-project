@@ -98,7 +98,7 @@ export default function BookingActions({
             disabled={disableAll}
             onClick={() => onMarkComplete(b)}
           >
-            {busy ? "Saving…" : "Mark Complete"}
+            {busy ? "Saving…" : "Haircut Done"}
           </Button>
           <Button
             size="sm"

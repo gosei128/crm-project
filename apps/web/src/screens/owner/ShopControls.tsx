@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   ListOrdered,
   Plus,
+  QrCode,
   Scissors,
   Store,
   X,
@@ -30,9 +31,12 @@ import {
   getShopRules,
   getShopStatus,
   getSingletonService,
+  resetGcashQr,
   resetHeroImage,
   toggleShopStatus,
+  updateShopPayment,
   updateSingletonService,
+  uploadGcashQr,
   uploadHeroImage,
   type Availability,
   type Service,
@@ -83,6 +87,16 @@ export default function ShopControls() {
   const [heroBusy, setHeroBusy] = useState(false);
   const heroInputRef = useRef<HTMLInputElement | null>(null);
 
+  // GCash downpayment details shown at checkout (Book → success step).
+  const [gcashNumber, setGcashNumber] = useState("09550996494");
+  const [gcashName, setGcashName] = useState("MA**N D.");
+  const [gcashQrUrl, setGcashQrUrl] = useState<string | null>(null);
+  const [gcashFile, setGcashFile] = useState<File | null>(null);
+  const [gcashPreview, setGcashPreview] = useState<string | null>(null);
+  const [gcashBusy, setGcashBusy] = useState(false);
+  const [savingGcash, setSavingGcash] = useState(false);
+  const gcashInputRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     async function run() {
@@ -98,6 +112,9 @@ export default function ShopControls() {
         if (shopRes) {
           setShopOpen(shopRes.is_open);
           setHeroUrl(shopRes.hero_image_url);
+          if (shopRes.gcash_number) setGcashNumber(shopRes.gcash_number);
+          if (shopRes.gcash_account_name) setGcashName(shopRes.gcash_account_name);
+          setGcashQrUrl(shopRes.gcash_qr_url ?? null);
         }
         if (svcRes) {
           setService(svcRes);
@@ -403,6 +420,169 @@ export default function ShopControls() {
               <p className="text-xs text-muted-foreground">
                 Uploads go live instantly for all visitors — no redeploy.
               </p>
+            </CardContent>
+          </Card>
+
+          <Card className="animate-enter-2">
+            <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+              <SectionIcon icon={QrCode} />
+              <div>
+                <CardTitle className="text-sm">Payment: GCash</CardTitle>
+                <p className="text-xs font-normal text-muted-foreground">
+                  Shown to clients at checkout when payment is required.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="gcash-number" className="text-xs">
+                    GCash number
+                  </Label>
+                  <Input
+                    id="gcash-number"
+                    value={gcashNumber}
+                    onChange={(e) => setGcashNumber(e.target.value)}
+                    placeholder="09550996494"
+                    inputMode="numeric"
+                    className="mt-1 font-mono tabular-nums"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gcash-name" className="text-xs">
+                    Account name
+                  </Label>
+                  <Input
+                    id="gcash-name"
+                    value={gcashName}
+                    onChange={(e) => setGcashName(e.target.value)}
+                    placeholder="MA**N D."
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                disabled={savingGcash}
+                onClick={() => {
+                  setSavingGcash(true);
+                  setError(null);
+                  setNotice(null);
+                  updateShopPayment({
+                    gcash_number: gcashNumber,
+                    gcash_account_name: gcashName,
+                  })
+                    .then((s) => {
+                      if (s.gcash_number) setGcashNumber(s.gcash_number);
+                      if (s.gcash_account_name) setGcashName(s.gcash_account_name);
+                      setNotice("GCash details updated — live at checkout.");
+                    })
+                    .catch((err: unknown) => {
+                      setError(err instanceof Error ? err.message : "Save failed");
+                    })
+                    .finally(() => setSavingGcash(false));
+                }}
+              >
+                {savingGcash ? "Saving…" : "Save GCash details"}
+              </Button>
+
+              <div className="overflow-hidden rounded-lg border">
+                <img
+                  src={gcashPreview ?? gcashQrUrl ?? undefined}
+                  alt="GCash QR preview shown at checkout"
+                  className="h-44 w-full object-contain bg-white"
+                  loading="lazy"
+                  style={{ display: gcashPreview || gcashQrUrl ? undefined : "none" }}
+                  onError={(e) => {
+                    e.currentTarget.style.opacity = "0.25";
+                  }}
+                />
+                {!gcashPreview && !gcashQrUrl && (
+                  <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+                    No QR uploaded yet — checkout shows the number with a Copy button.
+                    Upload your GCash QR below (the blue InstaPay QR from your screenshot).
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="gcash-file" className="text-xs">
+                  Upload QR photo (JPG, PNG, or WEBP · max 5 MB)
+                </Label>
+                <Input
+                  id="gcash-file"
+                  ref={gcashInputRef}
+                  type="file"
+                  accept={PROOF_ACCEPT}
+                  onChange={(e) => {
+                    const selected = e.target.files?.[0] ?? null;
+                    if (gcashPreview) URL.revokeObjectURL(gcashPreview);
+                    setGcashPreview(null);
+                    setError(null);
+                    if (!selected) {
+                      setGcashFile(null);
+                      return;
+                    }
+                    const problem = validateImageFile(selected);
+                    if (problem) {
+                      setGcashFile(null);
+                      setError(problem);
+                      return;
+                    }
+                    setGcashFile(selected);
+                    setGcashPreview(URL.createObjectURL(selected));
+                  }}
+                  disabled={gcashBusy}
+                  className="mt-1 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-espresso/10 file:px-3 file:py-1.5 file:text-xs file:font-medium"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={gcashBusy || !gcashFile}
+                  onClick={() => {
+                    if (!gcashFile) return;
+                    setGcashBusy(true);
+                    setError(null);
+                    setNotice(null);
+                    uploadGcashQr(gcashFile)
+                      .then((s) => {
+                        setGcashQrUrl(s.gcash_qr_url ?? null);
+                        if (gcashPreview) URL.revokeObjectURL(gcashPreview);
+                        setGcashPreview(null);
+                        setGcashFile(null);
+                        if (gcashInputRef.current) gcashInputRef.current.value = "";
+                        setNotice("GCash QR updated — live at checkout.");
+                      })
+                      .catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : "Upload failed");
+                      })
+                      .finally(() => setGcashBusy(false));
+                  }}
+                >
+                  {gcashBusy ? "Uploading…" : "Upload QR"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={gcashBusy || !gcashQrUrl}
+                  onClick={() => {
+                    setGcashBusy(true);
+                    setError(null);
+                    setNotice(null);
+                    resetGcashQr()
+                      .then((s) => {
+                        setGcashQrUrl(s.gcash_qr_url ?? null);
+                        setNotice("GCash QR removed — checkout shows number only.");
+                      })
+                      .catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : "Reset failed");
+                      })
+                      .finally(() => setGcashBusy(false));
+                  }}
+                >
+                  Remove QR
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

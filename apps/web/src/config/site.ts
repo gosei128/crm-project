@@ -51,3 +51,22 @@ export const HERO_COPY = {
   primaryCta: "Book Appointment",
   secondaryCta: "Schedule",
 } as const;
+
+/**
+ * GCash downpayment details shown at checkout (Book → success step).
+ * These are fallbacks — the owner can override number/name/QR from
+ * Shop Controls, served via GET /shop/status.
+ */
+export const GCASH_NUMBER = "09550996494";
+export const GCASH_ACCOUNT_NAME = "MA**N D.";
+
+export function formatGcashNumber(number: string): string {
+  const digits = (number ?? "").replace(/\D/g, "");
+  if (digits.length === 11) return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+  return number;
+}
+
+export function resolveGcashQr(uploadedUrl: string | null | undefined): string | null {
+  if (uploadedUrl && uploadedUrl.trim()) return uploadedUrl.trim();
+  return null;
+}

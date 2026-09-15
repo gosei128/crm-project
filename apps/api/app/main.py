@@ -3,8 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from pathlib import Path
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
 from app.config import settings
+from app.core.rate_limit import limiter
 from app.routers import auth, bookings, facebook, gallery, services, shop
 
 # Shop rules — official Kabarbers policy + operational lines.
@@ -85,15 +88,30 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Kabarbers Booking API", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Local disk storage for GCash proof images — created at import so the
-# StaticFiles mount never fails on a fresh checkout. Served at /uploads
-# so stored payment_proof_url values render directly in <img> tags.
+# Local disk storage for uploaded images — created at import so the
+# StaticFiles mounts never fail on a fresh checkout.
+#
+# Only PUBLIC subdirectories are mounted (hero, gallery, GCash QR).
+# Payment proof bytes live under <upload_dir>/proofs/ plus legacy files at
+# the upload root — deliberately unmounted, so they are reachable ONLY
+# through the authed GET /bookings/{id}/proof-file endpoint. Old public
+# /uploads/{proof-file} URLs now 404 by design.
 _UPLOAD_DIR = Path(settings.upload_dir)
 if not _UPLOAD_DIR.is_absolute():
     _UPLOAD_DIR = Path.cwd() / _UPLOAD_DIR
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(_UPLOAD_DIR)), name="uploads")
+_PUBLIC_MOUNTS = (
+    ("hero", "/uploads/hero"),
+    ("gallery", "/uploads/gallery"),
+    ("gcash", "/uploads/gcash"),
+)
+for _subdir, _route in _PUBLIC_MOUNTS:
+    _dir = _UPLOAD_DIR / _subdir
+    _dir.mkdir(parents=True, exist_ok=True)
+    app.mount(_route, StaticFiles(directory=str(_dir)), name=f"uploads-{_subdir}")
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,8 +1,17 @@
 """RBAC matrix: roles, ownership, claim flow, strict separation."""
 from datetime import date, datetime, time, timedelta
+from io import BytesIO
+
+from PIL import Image
 
 OWNER_EMAIL = "owner@kabarbers.local"
 OWNER_PW = "ownerpass123"
+
+
+def _make_png(color=(40, 160, 80)) -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", (8, 8), color).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _login(client, email, password):
@@ -297,10 +306,10 @@ def test_guest_proof_file_upload_unlinked_pending_then_locked_once_booked(
 
     r = client.post(
         f"/bookings/{booking_id}/payment-proof-file",
-        files={"file": ("receipt.png", b"\x89PNG\r\n\x1a\n" + b"0" * 100, "image/png")},
+        files={"file": ("receipt.png", _make_png(), "image/png")},
     )
     assert r.status_code == 200, r.text
-    assert "/uploads/" in r.json()["payment_proof_url"]
+    assert r.json()["payment_proof_url"].endswith(f"/bookings/{booking_id}/proof-file")
     assert r.json()["downpayment_status"] == "pending_verification"
 
     # owner confirms -> booked; guest re-upload is rejected
@@ -313,7 +322,7 @@ def test_guest_proof_file_upload_unlinked_pending_then_locked_once_booked(
         client.post(
             f"/bookings/{booking_id}/payment-proof-file",
             files={
-                "file": ("again.png", b"\x89PNG\r\n\x1a\n" + b"1" * 100, "image/png")
+                "file": ("again.png", _make_png((180, 60, 60)), "image/png")
             },
         ).status_code
         == 400

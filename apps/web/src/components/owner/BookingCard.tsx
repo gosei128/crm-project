@@ -120,6 +120,11 @@ export default function BookingCard({
 
               <p className="text-xs text-muted-foreground">
                 Created {formatDateTime(b.created_at)}
+                {b.reference_code && (
+                  <span className="font-mono font-bold tracking-wider">
+                    {" "}· {b.reference_code}
+                  </span>
+                )}
                 {b.arrival_time && (
                   <span>
                     {" "}

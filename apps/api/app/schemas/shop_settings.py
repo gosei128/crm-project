@@ -25,11 +25,21 @@ class ShopSocialsUpdate(BaseModel):
     tiktok_url: Optional[str] = None
 
 
+class ShopPaymentUpdate(BaseModel):
+    """Owner sets the GCash number + account name shown at checkout."""
+
+    gcash_number: Optional[str] = None
+    gcash_account_name: Optional[str] = None
+
+
 class ShopSettingsRead(ShopSettingsBase):
     id: uuid.UUID
     hero_image_url: Optional[str] = None
     facebook_url: Optional[str] = None
     tiktok_url: Optional[str] = None
+    gcash_number: Optional[str] = None
+    gcash_account_name: Optional[str] = None
+    gcash_qr_url: Optional[str] = None
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

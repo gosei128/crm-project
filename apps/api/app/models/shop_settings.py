@@ -18,4 +18,7 @@ class ShopSettings(Base):
     hero_image_url: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     facebook_url: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     tiktok_url: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    gcash_number: Mapped[str | None] = mapped_column(String, nullable=True, default="09550996494")
+    gcash_account_name: Mapped[str | None] = mapped_column(String, nullable=True, default="MA**N D.")
+    gcash_qr_url: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

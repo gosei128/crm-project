@@ -45,13 +45,27 @@ class BookingCreatePublic(BaseModel):
     def validate_customer_phone(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("customer_phone is required")
+        digits = "".join(c for c in v.strip() if c.isdigit())
+        if len(digits) < 10 or len(digits) > 13:
+            raise ValueError("customer_phone must be 10-13 digits")
         return v.strip()
 
     @field_validator("pax")
     @classmethod
     def validate_pax(cls, v: int) -> int:
-        if v < 1:
-            raise ValueError("pax must be >= 1")
+        if v < 1 or v > 10:
+            raise ValueError("pax must be between 1 and 10")
+        return v
+
+    @field_validator("slot_start")
+    @classmethod
+    def validate_slot_start(cls, v: datetime) -> datetime:
+        # Timezone-aware input is normalized to naive UTC for comparison.
+        check = v.replace(tzinfo=None) if v.tzinfo is not None else v
+        from datetime import datetime as _dt, timedelta as _td
+
+        if check < _dt.utcnow() - _td(minutes=1):
+            raise ValueError("Cannot book a past time slot")
         return v
 
 
@@ -66,6 +80,13 @@ class BookingCreate(BaseModel):
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
 
+    @field_validator("pax")
+    @classmethod
+    def validate_pax(cls, v: int) -> int:
+        if v < 1 or v > 10:
+            raise ValueError("pax must be between 1 and 10")
+        return v
+
 
 class BookingRead(BookingBase):
     id: uuid.UUID
@@ -73,6 +94,8 @@ class BookingRead(BookingBase):
     status: str
     slot_end: datetime
     created_at: datetime
+    # Short customer-facing reference for guest status lookup.
+    reference_code: Optional[str] = None
 
     # Client info
     customer_name: Optional[str] = None
@@ -88,6 +111,9 @@ class BookingRead(BookingBase):
 
     # Arrival
     arrival_time: Optional[datetime] = None
+
+    # When the haircut was marked done (None until then).
+    completed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import type { Booking } from "@/lib/api";
 import { formatDateTime, formatSlotRange } from "@/lib/format";
-import { isImageUrl } from "@/lib/media";
+import { isImageUrl, isPrivateProofUrl } from "@/lib/media";
+import { useProofImage } from "@/hooks/useProofImage";
 import { useConfirmTap } from "@/hooks/useConfirmTap";
 import { TERMINAL_STATUSES } from "./bookingStatus";
 import BookingActions from "./BookingActions";
@@ -99,6 +100,16 @@ export default function BookingDetailsModal({
 
   const trimmedProof = booking?.payment_proof_url?.trim();
   const proofUrl = trimmedProof ? trimmedProof : null;
+  const { src: proofSrc, loading: proofLoading, error: proofError } = useProofImage(
+    booking?.id,
+    proofUrl,
+  );
+
+  function handleOpenProof() {
+    if (proofSrc) window.open(proofSrc, "_blank", "noopener,noreferrer");
+    else if (proofUrl && !isPrivateProofUrl(proofUrl))
+      window.open(proofUrl, "_blank", "noopener,noreferrer");
+  }
 
   const { armed, tap, reset } = useConfirmTap();
   useEffect(() => {
@@ -181,6 +192,13 @@ export default function BookingDetailsModal({
               )}
 
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="shrink-0">Ref code</span>
+                <code className="min-w-0 flex-1 truncate rounded bg-muted/60 px-1.5 py-0.5 font-mono font-bold tracking-wider tabular-nums">
+                  {booking.reference_code ?? "—"}
+                </code>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="shrink-0">Booking ID</span>
                 <code className="min-w-0 flex-1 truncate rounded bg-muted/60 px-1.5 py-0.5 tabular-nums">
                   {booking.id}
@@ -207,7 +225,28 @@ export default function BookingDetailsModal({
                   GCash payment proof
                 </p>
                 {proofUrl ? (
-                  isImageUrl(proofUrl) ? (
+                  proofLoading ? (
+                    <p className="animate-pulse rounded-lg border p-6 text-center text-sm text-muted-foreground">
+                      Loading proof…
+                    </p>
+                  ) : proofSrc ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenProof}
+                      className="block w-full cursor-zoom-in"
+                    >
+                      <img
+                        src={proofSrc}
+                        alt="GCash payment proof uploaded by customer"
+                        className="max-h-64 w-full rounded-lg border object-contain"
+                        loading="lazy"
+                      />
+                    </button>
+                  ) : proofError ? (
+                    <p className="rounded-lg border p-3 text-center text-sm text-muted-foreground">
+                      Could not load proof: {proofError}
+                    </p>
+                  ) : isImageUrl(proofUrl) ? (
                     <a href={proofUrl} target="_blank" rel="noopener noreferrer">
                       <img
                         src={proofUrl}
@@ -244,9 +283,8 @@ export default function BookingDetailsModal({
                     variant="outline"
                     size="sm"
                     className="w-full sm:w-auto"
-                    render={
-                      <a href={proofUrl} target="_blank" rel="noopener noreferrer" />
-                    }
+                    onClick={handleOpenProof}
+                    disabled={proofLoading || (!proofSrc && isPrivateProofUrl(proofUrl))}
                   >
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                     Open proof

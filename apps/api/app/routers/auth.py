@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.core.rate_limit import limiter
 from app.schemas.user import UserRead, UserCreate
 from app.database import get_db
 from app.services import auth_service
@@ -10,7 +12,8 @@ from app.core.dependency import get_current_user, require_owner
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def sign_up(data:UserCreate, db: Session = Depends(get_db)):
+@limiter.limit(settings.signup_rate_limit)
+def sign_up(request: Request, data:UserCreate, db: Session = Depends(get_db)):
     # Single-shop: public signup always creates a customer
     try:
         new_user = auth_service.create_user(db, email=data.email, password=data.password, name=data.name, role="customer")
@@ -43,7 +46,8 @@ def bootstrap_owner(data: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/login")
-def login(form_data : OAuth2PasswordRequestForm = Depends(), db : Session = Depends(get_db)):
+@limiter.limit(settings.login_rate_limit)
+def login(request: Request, form_data : OAuth2PasswordRequestForm = Depends(), db : Session = Depends(get_db)):
     try:
         token, user = auth_service.login_user(db, email = form_data.username, password = form_data.password)
     except ValueError as e:

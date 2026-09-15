@@ -1,4 +1,5 @@
 from datetime import timedelta, time, datetime, date
+import secrets
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
@@ -6,6 +7,16 @@ from sqlalchemy.exc import IntegrityError
 from app.models.availability import Availability
 from app.models.booking import Booking, BookingStatus, DownpaymentStatus
 from app.models.service import Service
+
+# Reference codes skip ambiguous glyphs (0/O, 1/I/L) so customers can read
+# them off a screen and type them into the status lookup.
+REF_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+REF_LENGTH = 8
+
+
+def generate_reference_code() -> str:
+    """Short customer-facing booking reference, e.g. 'KX7Q2M9A'."""
+    return "".join(secrets.choice(REF_ALPHABET) for _ in range(REF_LENGTH))
 
 # Lunch break window — slots that overlap this are excluded
 LUNCH_START = time(12, 30)
@@ -50,6 +61,11 @@ def get_available_slots(
     bookings (status IN pending/booked) or that overlap the lunch window.
     """
     day_of_week = target_date.weekday()
+
+    # Past dates are never bookable — return empty instead of matching
+    # weekday rules that would otherwise look "available".
+    if target_date < date.today():
+        return []
 
     # Resolve singleton if no service_id provided
     if service_id is None:
@@ -134,34 +150,56 @@ def create_booking(
 
     slot_end = slot_start + timedelta(minutes=service.duration_minutes)
 
+    # Defense in depth: service layer also rejects past slots and bad pax
+    # (pydantic covers HTTP, this covers direct/job callers).
+    check_start = slot_start.replace(tzinfo=None) if slot_start.tzinfo else slot_start
+    if check_start < datetime.utcnow() - timedelta(minutes=1):
+        raise ValueError("Cannot book a past time slot")
+    if pax is not None and (pax < 1 or pax > 10):
+        raise ValueError("pax must be between 1 and 10")
+
     # Verify the slot is currently available (quick application-level check)
     available_slots = get_available_slots(service_id, db, slot_start.date())
     if slot_start not in available_slots:
         raise ValueError("This slot is no longer available")
 
-    new_booking = Booking(
-        service_id=service_id,
-        customer_id=customer_id,
-        customer_name=customer_name,
-        customer_phone=customer_phone,
-        slot_start=slot_start,
-        slot_end=slot_end,
-        status=BookingStatus.PENDING.value,
-        pax=pax,
-        notes=notes,
-        downpayment_status=DownpaymentStatus.NONE.value,
-    )
-    db.add(new_booking)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise ValueError(
-            "This slot was just taken by another customer. "
-            "Please choose a different time."
+    # Insert with a fresh candidate per attempt: on IntegrityError we must
+    # tell a reference-code collision (safe to retry) apart from a slot
+    # race (report "just taken").
+    for _ in range(3):
+        code = generate_reference_code()
+        if db.query(Booking.id).filter(Booking.reference_code == code).first():
+            continue
+        new_booking = Booking(
+            service_id=service_id,
+            customer_id=customer_id,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            slot_start=slot_start,
+            slot_end=slot_end,
+            status=BookingStatus.PENDING.value,
+            pax=pax,
+            notes=notes,
+            downpayment_status=DownpaymentStatus.NONE.value,
+            reference_code=code,
         )
-    db.refresh(new_booking)
-    return new_booking
+        db.add(new_booking)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            if db.query(Booking.id).filter(Booking.reference_code == code).first():
+                continue  # code collision — regenerate and retry
+            raise ValueError(
+                "This slot was just taken by another customer. "
+                "Please choose a different time."
+            )
+        db.refresh(new_booking)
+        return new_booking
+    raise ValueError(
+        "This slot was just taken by another customer. "
+        "Please choose a different time."
+    )
 
 
 def confirm_downpayment(db: Session, booking: Booking) -> Booking:
@@ -227,6 +265,7 @@ def mark_complete(db: Session, booking: Booking) -> Booking:
             f"Cannot complete a booking in '{booking.status}' status"
         )
     booking.status = BookingStatus.COMPLETE.value
+    booking.completed_at = datetime.utcnow()
     db.commit()
     db.refresh(booking)
     return booking

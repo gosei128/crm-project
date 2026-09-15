@@ -37,10 +37,17 @@ class Booking(Base):
             unique=True,
             postgresql_where="status IN ('pending', 'booked')",
         ),
+        Index("ix_bookings_slot_start", "slot_start"),
+        Index("ix_bookings_status", "status"),
+        Index("ix_bookings_customer", "customer_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     service_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("services.id"))
+    # Short customer-facing reference (e.g. "KX7Q2M9A") for guest lookup.
+    # Nullable only so the backfill migration can add the column; every
+    # booking created through the service layer always gets one.
+    reference_code: Mapped[str | None] = mapped_column(String(8), unique=True, nullable=True)
     # nullable — client booking flow doesn't require login
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
@@ -65,6 +72,10 @@ class Booking(Base):
 
     # Arrival tracking (for late/no-show detection)
     arrival_time: Mapped[dt | None] = mapped_column(nullable=True)
+
+    # When the owner marked the haircut done (BOOKED → COMPLETE). Drives
+    # guest-lookup expiry: tickets stop resolving N days after this.
+    completed_at: Mapped[dt | None] = mapped_column(nullable=True)
 
     created_at: Mapped[dt] = mapped_column(default=dt.utcnow)
 

@@ -4,7 +4,9 @@ from app.config import settings
 
 DATABASE_URL = settings.database_url
 
-engine = create_engine(DATABASE_URL, echo=True)
+# SQL echo is debug noise — off in production to avoid logging
+# query params (phones, names) to stdout.
+engine = create_engine(DATABASE_URL, echo=not settings.is_production)
 
 SessionLocal = sessionmaker(bind=engine)
 

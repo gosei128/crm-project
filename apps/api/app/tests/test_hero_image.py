@@ -1,10 +1,17 @@
 """Owner-uploaded hero image on shop settings."""
+from io import BytesIO
 from pathlib import Path
 
-PNG = bytes.fromhex(
-    "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
-    "0000000c4944415478d763f800010000ffff0300015dcdfd3b0000000049454e44ae426082"
-)
+from PIL import Image
+
+
+def _make_png() -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", (8, 8), (40, 90, 200)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+PNG = _make_png()
 
 
 def _login(client, email, password):

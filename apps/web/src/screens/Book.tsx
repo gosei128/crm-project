@@ -9,17 +9,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
+  getShopStatus,
   getSingletonService,
   getShopRules,
   getWeeklySchedule,
   createPublicBooking,
+  lookupBooking,
   uploadPaymentProofFile,
   type Service,
   type ShopRule,
+  type ShopStatus,
   type Booking,
   type SlotInfo,
 } from "@/lib/api";
 import { PROOF_ACCEPT, validateProofFile } from "@/lib/media";
+import GcashPaymentCard from "@/components/booking/GcashPaymentCard";
 import PublicNav, { NavSentinel } from "@/components/public/PublicNav";
 import PublicFooter from "@/components/public/PublicFooter";
 
@@ -59,8 +63,23 @@ function getStatusBadge(status: string) {
   return map[status] ?? "bg-espresso/10 text-espresso/60";
 }
 
-/** Same-device resume for guests: the public booking API has no lookup by
- *  ID, so we stash the last unfinished booking locally. */
+/** Customer-facing appointment label: the haircut being finished reads as
+ *  HAIRCUT DONE so it can't be mistaken for a payment state. Payment has
+ *  its own separate Downpayment row (see downpaymentLabel). */
+function customerStatusLabel(status: string): string {
+  if (status === "complete") return "HAIRCUT DONE";
+  return status.toUpperCase().replace(/_/g, " ");
+}
+
+/** Customer-facing downpayment label — plain words, never the raw enum. */
+function downpaymentLabel(value: string): string {
+  if (value === "confirmed") return "Received ✓";
+  if (value === "pending_verification") return "Waiting verification";
+  return "Not paid";
+}
+
+/** Same-device resume for guests: one-tap shortcut back to an unfinished
+ *  booking on this device (any device can also use the ref-code lookup). */
 const LAST_BOOKING_KEY = "kabarbers_last_booking";
 
 interface StoredBooking {
@@ -99,6 +118,7 @@ export default function Book() {
   // --- data ---
   const [service, setService] = useState<Service | null>(null);
   const [shopRules, setShopRules] = useState<ShopRule[]>([]);
+  const [shopStatus, setShopStatus] = useState<ShopStatus | null>(null);
   const [daySlots, setDaySlots] = useState<SlotInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +142,40 @@ export default function Book() {
   const [proofPreview, setProofPreview] = useState<string | null>(null);
   const [proofError, setProofError] = useState<string | null>(null);
 
-  // --- same-device resume (guest checkout has no booking lookup) ---
+  // --- guest status lookup (reference code + phone, works on any device) ---
+  const [lookupCode, setLookupCode] = useState("");
+  const [lookupPhone, setLookupPhone] = useState("");
+  const [lookupResult, setLookupResult] = useState<Booking | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+
+  // --- live booking status (fixes stale "awaiting review" after the owner
+  //  confirms: the stored snapshot is revalidated against the server) ---
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [staleSnapshot, setStaleSnapshot] = useState(false);
+  const [replacingProof, setReplacingProof] = useState(false);
+  // Monotonic request id — a slow lookup must never overwrite fresher state.
+  const statusSeq = useRef(0);
+
+  async function handleLookup(e: React.FormEvent) {
+    e.preventDefault();
+    setLookupLoading(true);
+    setLookupError(null);
+    setLookupResult(null);
+    try {
+      const found = await lookupBooking(lookupCode, lookupPhone);
+      setLookupResult(found);
+    } catch (err: unknown) {
+      setLookupError(
+        err instanceof Error ? err.message : "Booking not found",
+      );
+    } finally {
+      setLookupLoading(false);
+    }
+  }
+
+  // --- same-device resume (one-tap shortcut; ref-code lookup works anywhere) ---
   const [stored, setStored] = useState<StoredBooking | null>(loadStoredBooking);
   // Mirror of `step` for the slot-loading effect: reading state there would
   // retrigger it, so a ref is used. Synced here — declared before that
@@ -182,6 +235,73 @@ export default function Book() {
     }
   }
 
+  /** Re-fetch the live booking from the server (ref code + phone).
+   *  Returns the fresh booking, or null when it failed (state untouched).
+   *  `manual` controls whether the user sees a notice for no-change. */
+  async function refreshBookingStatus(
+    target: Booking,
+    phone: string,
+    manual: boolean,
+  ): Promise<Booking | null> {
+    if (!target.reference_code || !phone.trim()) return null;
+    const seq = ++statusSeq.current;
+    if (manual) {
+      setRefreshingStatus(true);
+      setStatusNotice(null);
+    }
+    try {
+      const fresh = await lookupBooking(
+        target.reference_code,
+        phone,
+      );
+      // A slower earlier request must not clobber newer state.
+      if (seq !== statusSeq.current) return null;
+      const changed =
+        fresh.status !== target.status ||
+        (fresh.payment_proof_url ?? null) !== (target.payment_proof_url ?? null) ||
+        fresh.downpayment_status !== target.downpayment_status;
+      setBooking(fresh);
+      setStaleSnapshot(false);
+      if (
+        fresh.status !== "pending" &&
+        fresh.status !== "booked"
+      ) {
+        // Finished (complete/expired/cancelled) — the banner auto-removes;
+        // the lookup card below remains for history checks.
+        try {
+          localStorage.removeItem(LAST_BOOKING_KEY);
+        } catch {
+          // storage unavailable — nothing to clear
+        }
+        setStored(null);
+      } else {
+        persistStored(fresh);
+      }
+      if (manual) {
+        setStatusNotice(
+          changed
+            ? `Status updated: ${customerStatusLabel(fresh.status)}`
+            : "Already up to date.",
+        );
+      } else if (changed && fresh.status !== "pending") {
+        setStatusNotice(
+          `Status updated: ${customerStatusLabel(fresh.status)}`,
+        );
+      }
+      return fresh;
+    } catch (err: unknown) {
+      if (seq !== statusSeq.current) return null;
+      if (manual) {
+        setStatusNotice(
+          err instanceof Error ? err.message : "Could not refresh status.",
+        );
+      }
+      return null;
+    } finally {
+      if (manual && seq === statusSeq.current) setRefreshingStatus(false);
+    }
+  }
+
   function handleResumeBooking() {
     if (!stored) return;
     setCustomerName(stored.customerName);
@@ -193,6 +313,22 @@ export default function Book() {
     setBooking(stored.booking);
     clearProofSelection();
     setError(null);
+    setStatusNotice(null);
+    setReplacingProof(false);
+    // The snapshot may predate the owner's confirmation — revalidate it
+    // against the server so a confirmed booking doesn't show as
+    // "awaiting review" forever. Falls back to the snapshot offline.
+    if (stored.booking.reference_code && stored.customerPhone.trim()) {
+      setStaleSnapshot(false);
+      void refreshBookingStatus(stored.booking, stored.customerPhone, false).then(
+        (fresh) => {
+          if (!fresh) setStaleSnapshot(true);
+        },
+      );
+    } else {
+      // Bookings saved before ref codes existed can't be revalidated.
+      setStaleSnapshot(true);
+    }
     setStep("success");
   }
 
@@ -205,7 +341,7 @@ export default function Book() {
     setStored(null);
   }
 
-  // --- load singleton service + rules on mount ---
+  // --- load singleton service + rules + GCash details on mount ---
   useEffect(() => {
     getSingletonService()
       .then((s) => setService(s))
@@ -213,7 +349,94 @@ export default function Book() {
     getShopRules()
       .then((r) => setShopRules(r))
       .catch(() => {});
+    getShopStatus()
+      .then((s) => setShopStatus(s))
+      .catch(() => {});
   }, []);
+
+  // --- banner lifecycle: silently revalidate the saved booking on mount so
+  //  the banner reflects reality instead of nagging forever.
+  //  booked → snapshot refreshed, banner becomes "View ticket".
+  //  complete/expired/cancelled → saved entry removed, banner auto-vanishes.
+  //  Lookup failure (offline) → banner stays as the fallback.
+  useEffect(() => {
+    const entry = loadStoredBooking();
+    if (!entry?.booking?.reference_code || !entry.customerPhone.trim()) return;
+    let cancelled = false;
+    lookupBooking(entry.booking.reference_code, entry.customerPhone)
+      .then((fresh) => {
+        if (cancelled) return;
+        if (fresh.status === "booked") {
+          const next = { ...entry, booking: fresh };
+          try {
+            localStorage.setItem(LAST_BOOKING_KEY, JSON.stringify(next));
+          } catch {
+            // storage unavailable — banner still updates for this visit
+          }
+          setStored(next);
+        } else if (fresh.status !== "pending") {
+          try {
+            localStorage.removeItem(LAST_BOOKING_KEY);
+          } catch {
+            // storage unavailable — nothing to clear
+          }
+          setStored(null);
+        } else if (
+          (fresh.payment_proof_url ?? null) !==
+            (entry.booking.payment_proof_url ?? null) ||
+          fresh.downpayment_status !== entry.booking.downpayment_status
+        ) {
+          const next = { ...entry, booking: fresh };
+          try {
+            localStorage.setItem(LAST_BOOKING_KEY, JSON.stringify(next));
+          } catch {
+            // storage unavailable — banner still updates for this visit
+          }
+          setStored(next);
+        }
+      })
+      .catch(() => {
+        // offline or lookup failed — keep the saved banner as fallback
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // --- live status polling: while a pending OR booked booking is on screen,
+  //  re-check every 30s so owner taps (confirm, arrived, complete, no-show)
+  //  flip the ticket automatically. Stops at complete/terminal states.
+  //  Paused when the tab is hidden; silent failures (offline) keep old state.
+  useEffect(() => {
+    if (step !== "success" || !booking) return;
+    if (booking.status !== "pending" && booking.status !== "booked") return;
+    if (!booking.reference_code || !customerPhone.trim()) return;
+    let cancelled = false;
+    let timer: number | null = null;
+    const snapshot = booking;
+    const phone = customerPhone;
+    const tick = async () => {
+      if (cancelled) return;
+      if (!document.hidden) {
+        await refreshBookingStatus(snapshot, phone, false);
+      }
+      if (!cancelled) timer = window.setTimeout(tick, 30000);
+    };
+    const onVisible = () => {
+      if (!document.hidden && !cancelled) {
+        void refreshBookingStatus(snapshot, phone, false);
+      }
+    };
+    timer = window.setTimeout(tick, 30000);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // Re-arms when a fresh booking object lands (status/proof transitions).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, booking?.id, booking?.status, booking?.payment_proof_url]);
 
   // Pre-filled slot from Schedule (?date=&time=): keep it selected when
   // (re)loading that day's slots instead of resetting the selection.
@@ -297,6 +520,8 @@ export default function Book() {
       setBooking(updated);
       persistStored(updated);
       clearProofSelection();
+      setReplacingProof(false);
+      setStaleSnapshot(false);
     } catch (e: unknown) {
       setProofError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -315,6 +540,27 @@ export default function Book() {
   const heldCount = daySlots.filter((s) => s.status === "held").length;
   const bookedCount = daySlots.filter((s) => s.status === "booked").length;
 
+  // --- success-stage derivation (5th stage: status-driven panels) ---
+  const isBooked = booking?.status === "booked";
+  const isPending = booking?.status === "pending";
+  const hasProof = !!booking?.payment_proof_url;
+  const isComplete = booking?.status === "complete";
+  const isTerminal =
+    !!booking && !isBooked && !isPending && !isComplete;
+  const terminalLabel = customerStatusLabel(booking?.status ?? "");
+  const canRefreshStage =
+    step === "success" && !!booking && isPending && !!booking.reference_code;
+
+  function handleCopyRefCode() {
+    if (!booking?.reference_code) return;
+    void navigator.clipboard.writeText(booking.reference_code).catch(() => {});
+  }
+
+  function handleManualRefresh() {
+    if (!booking || !customerPhone.trim()) return;
+    void refreshBookingStatus(booking, customerPhone, true);
+  }
+
   return (
     <div className="min-h-[100dvh] bg-parchment text-espresso">
       <PublicNav />
@@ -331,17 +577,27 @@ export default function Book() {
           </p>
         </div>
 
-        {/* progress indicator */}
+        {/* progress indicator — a 5th "ticket" dot appears once the
+            booking is owner-confirmed */}
         <div className="flex items-center justify-center gap-2 text-xs text-espresso/55">
-          {(["datetime", "info", "rules", "success"] as Step[]).map((s, i) => (
-            <div key={s} className="flex items-center gap-1">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center font-medium
-                ${step === s ? "bg-accent-deep text-cream-ink" : "bg-espresso/10 text-espresso/60"}`}>
-                {i + 1}
-              </span>
-              {i < 3 && <span className="w-4 h-px bg-espresso/15" />}
-            </div>
-          ))}
+          {(booking?.status === "booked"
+            ? (["datetime", "info", "rules", "success", "ticket"] as const)
+            : (["datetime", "info", "rules", "success"] as const)
+          ).map((s, i, arr) => {
+            const active =
+              s === "ticket" ? booking?.status === "booked" : step === s;
+            return (
+              <div key={s} className="flex items-center gap-1">
+                <span
+                  className={`w-6 h-6 rounded-full flex items-center justify-center font-medium
+                ${active ? "bg-accent-deep text-cream-ink" : "bg-espresso/10 text-espresso/60"}`}
+                >
+                  {i + 1}
+                </span>
+                {i < arr.length - 1 && <span className="w-4 h-px bg-espresso/15" />}
+              </div>
+            );
+          })}
         </div>
 
         {/* error banner */}
@@ -351,7 +607,8 @@ export default function Book() {
           </div>
         )}
 
-        {/* resume banner — left before uploading proof? pick up where you left off */}
+        {/* resume banner — status-aware: pending offers continue, booked
+            offers the ticket, finished bookings auto-remove the save */}
         {stored && step !== "success" && (
           <Card className="border-bronze/40 bg-bronze/[0.08]">
             <CardContent className="flex flex-wrap items-center gap-3 py-3">
@@ -360,7 +617,9 @@ export default function Book() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-espresso">
-                  Unfinished booking found
+                  {stored.booking.status === "booked"
+                    ? "Booking confirmed — your ticket is ready"
+                    : "Unfinished booking found"}
                 </p>
                 <p className="truncate text-xs text-espresso/60 tabular-nums">
                   {stored.customerName}, {stored.selectedDate} at{" "}
@@ -377,7 +636,7 @@ export default function Book() {
                   Dismiss
                 </Button>
                 <Button size="sm" className="h-7 bg-accent-deep text-xs whitespace-nowrap text-cream-ink hover:bg-oxblood-bright" onClick={handleResumeBooking}>
-                  Continue payment
+                  {stored.booking.status === "booked" ? "View ticket" : "Continue payment"}
                 </Button>
               </div>
             </CardContent>
@@ -652,62 +911,183 @@ export default function Book() {
         {step === "success" && booking && (
           <Card className="border-espresso/10 bg-cream text-espresso shadow-[0_2px_16px_-8px_rgb(43_33_24/0.3)]">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex flex-wrap items-center gap-2">
                 <span>
-                  {booking.payment_proof_url
-                    ? "Proof Received"
-                    : "Slot Reserved"}
+                  {isBooked
+                    ? "Booking Confirmed"
+                    : isComplete
+                      ? "Haircut Done"
+                      : isTerminal
+                        ? terminalLabel || "Booking Ended"
+                        : hasProof
+                          ? "Awaiting Review"
+                          : "Slot Reserved"}
                 </span>
-                <Badge className={getStatusBadge(booking.status)}>
-                  {booking.status === "pending"
-                    ? booking.payment_proof_url
+                <Badge className={booking ? getStatusBadge(booking.status) : ""}>
+                  {isPending
+                    ? hasProof
                       ? "AWAITING REVIEW"
                       : "AWAITING PROOF"
-                    : booking.status.toUpperCase()}
+                    : terminalLabel}
                 </Badge>
+                {canRefreshStage && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-espresso/20 px-2 text-xs text-espresso hover:bg-espresso/5"
+                    disabled={refreshingStatus}
+                    onClick={handleManualRefresh}
+                  >
+                    {refreshingStatus ? "Refreshing…" : "Refresh status"}
+                  </Button>
+                )}
               </CardTitle>
               <CardDescription>
-                Booking ID: <code className="text-xs">{booking.id}</code>
+                Ref code:{" "}
+                <code className="font-mono text-xs font-bold tracking-wider">
+                  {booking.reference_code ?? "—"}
+                </code>
               </CardDescription>
+              {statusNotice && (
+                <p className="rounded-md border border-moss/30 bg-moss/[0.07] px-3 py-1.5 text-xs text-moss">
+                  {statusNotice}
+                </p>
+              )}
+              {staleSnapshot && (
+                <p className="rounded-md border border-bronze/40 bg-bronze/[0.08] px-3 py-1.5 text-xs text-bronze">
+                  Showing your saved copy — it may be outdated. Use Refresh status
+                  (or the lookup below) for the latest.
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-md border border-bronze/40 bg-bronze/[0.08] px-4 py-3 text-sm">
-                <p className="font-semibold text-bronze">
-                  Reservation held. Present this code at check-in
-                </p>
-                <p className="mt-1 font-mono text-lg font-bold tracking-wide text-espresso tabular-nums">
-                  {booking.id.slice(0, 8).toUpperCase()}
-                </p>
-                <p className="mt-1 text-espresso/70">
-                  {selectedDate} ·{" "}
-                  {selectedSlot
-                    ? formatSlotRange(selectedSlot, service?.duration_minutes)
-                    : ""}
-                </p>
-              </div>
+              {/* ── Stage 5a: confirmed ticket ── */}
+              {isBooked && (
+                <div className="rounded-lg border border-moss/40 bg-moss/[0.08] px-4 py-4 text-center">
+                  <p className="text-2xl" aria-hidden="true">🎟️</p>
+                  <p className="mt-1 text-base font-bold text-moss">
+                    Your booking is confirmed
+                  </p>
+                  <p className="mt-1 text-sm text-espresso/75">
+                    Downpayment received. Walk straight to the chair and present
+                    this ticket code at check-in:
+                  </p>
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <p className="font-mono text-2xl font-bold tracking-widest text-espresso tabular-nums">
+                      {booking.reference_code ?? "—"}
+                    </p>
+                    {booking.reference_code && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 border-moss/40 px-2 text-xs text-moss hover:bg-moss/10 hover:text-moss"
+                        onClick={handleCopyRefCode}
+                      >
+                        Copy
+                      </Button>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm text-espresso/70 tabular-nums">
+                    {selectedDate} ·{" "}
+                    {selectedSlot
+                      ? formatSlotRange(selectedSlot, service?.duration_minutes)
+                      : ""}
+                  </p>
+                </div>
+              )}
 
-              <div className="bg-bronze/[0.08] border border-bronze/40 rounded-md px-4 py-3 text-sm">
-                {booking.payment_proof_url ? (
-                  <>
-                    <p className="font-medium text-moss">✓ Proof uploaded</p>
-                    <p className="text-espresso/75 mt-1">
-                      Your slot is held. The owner will verify your GCash
-                      payment and confirm your booking — no further action
-                      needed from you.
+              {/* ── terminal / complete states ── */}
+              {isComplete && (
+                <div className="rounded-md border border-moss/30 bg-moss/[0.07] px-4 py-3 text-sm">
+                  <p className="font-medium text-moss">✓ Haircut done — thanks for visiting Kabarbers.</p>
+                  <p className="mt-1 text-espresso/75">
+                    Show this screen if asked — your ref code above is your record.
+                  </p>
+                </div>
+              )}
+              {isTerminal && (
+                <div className="rounded-md border border-oxblood/30 bg-oxblood/[0.06] px-4 py-3 text-sm">
+                  <p className="font-medium text-oxblood">
+                    Booking {terminalLabel.toLowerCase()}
+                  </p>
+                  <p className="mt-1 text-espresso/75">
+                    This booking is no longer active and its downpayment is
+                    forfeited. Use Book Another below for a new slot.
+                  </p>
+                </div>
+              )}
+
+              {/* ── pending: check-in code box ── */}
+              {isPending && (
+                <div className="rounded-md border border-bronze/40 bg-bronze/[0.08] px-4 py-3 text-sm">
+                  <p className="font-semibold text-bronze">
+                    Reservation held. Present this code at check-in
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className="font-mono text-lg font-bold tracking-wide text-espresso tabular-nums">
+                      {booking.reference_code ?? "—"}
                     </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-medium text-bronze">⚠ Payment Required</p>
-                    <p className="text-espresso/75 mt-1">
-                      Your slot is held for 15 minutes. Send the downpayment
-                      via GCash and upload your proof of payment below to keep
-                      it — the hold lifts once your proof is in, and the owner
-                      confirms your booking after verifying payment.
-                    </p>
-                  </>
-                )}
-              </div>
+                    {booking.reference_code && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 border-espresso/20 px-2 text-xs text-espresso hover:bg-espresso/5"
+                        onClick={handleCopyRefCode}
+                      >
+                        Copy
+                      </Button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-espresso/70">
+                    {selectedDate} ·{" "}
+                    {selectedSlot
+                      ? formatSlotRange(selectedSlot, service?.duration_minutes)
+                      : ""}
+                  </p>
+                </div>
+              )}
+
+              {/* ── Stage 5b: awaiting review (proof in, owner hasn't confirmed) ── */}
+              {isPending && hasProof && (
+                <div className="rounded-md border border-bronze/40 bg-bronze/[0.08] px-4 py-3 text-sm">
+                  <p className="font-medium text-bronze">
+                    ⏳ Awaiting review — your slot is pending
+                  </p>
+                  <p className="mt-1 text-espresso/75">
+                    We received your proof of payment. The owner will verify
+                    the GCash payment and confirm your booking — no further
+                    action needed from you. This page checks automatically;
+                    you can also tap Refresh status anytime.
+                  </p>
+                </div>
+              )}
+
+              {/* ── pending without proof: payment required ── */}
+              {isPending && !hasProof && (
+                <div className="bg-bronze/[0.08] border border-bronze/40 rounded-md px-4 py-3 text-sm">
+                  <p className="font-medium text-bronze">⚠ Payment Required</p>
+                  <p className="text-espresso/75 mt-1">
+                    Your slot is held for 15 minutes. Send the downpayment
+                    via GCash below and upload your proof of payment to keep
+                    it — the hold lifts once your proof is in, and the owner
+                    confirms your booking after verifying payment.
+                  </p>
+                </div>
+              )}
+
+              {isPending && !hasProof && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-espresso">Pay via GCash</p>
+                  <GcashPaymentCard
+                    gcashNumber={shopStatus?.gcash_number}
+                    gcashAccountName={shopStatus?.gcash_account_name}
+                    gcashQrUrl={shopStatus?.gcash_qr_url}
+                  />
+                </div>
+              )}
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -725,55 +1105,85 @@ export default function Book() {
                   <span className="font-medium text-espresso">{booking.pax}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-espresso/55">Payment Status</span>
-                  <Badge variant="outline" className="capitalize border-espresso/20 text-espresso">
-                    {booking.downpayment_status.replace("_", " ")}
+                  <span className="text-espresso/55">Downpayment</span>
+                  <Badge variant="outline" className="border-espresso/20 text-espresso">
+                    {booking ? downpaymentLabel(booking.downpayment_status) : "—"}
                   </Badge>
                 </div>
               </div>
 
               <Separator className="bg-espresso/10" />
 
-              {/* proof upload */}
-              <div className="space-y-2">
-                <Label htmlFor="proof-file" className="text-sm font-medium">Upload Payment Proof</Label>
-                <p className="text-xs text-espresso/55">
-                  Choose a photo of your GCash receipt (JPG, PNG, or WEBP · max 5 MB)
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    id="proof-file"
-                    type="file"
-                    accept={PROOF_ACCEPT}
-                    onChange={handleProofSelect}
-                    disabled={loading || booking.downpayment_status === "confirmed"}
-                    className="cursor-pointer border-espresso/20 bg-espresso/[0.04] text-espresso file:mr-3 file:rounded file:border-0 file:bg-espresso/10 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-espresso"
-                  />
-                  <Button
-                    onClick={handlePaymentProof}
-                    disabled={loading || !proofFile || booking.downpayment_status === "confirmed"}
-                    variant="outline"
-                    className="border-espresso/20 text-espresso hover:bg-espresso/5 hover:text-espresso"
-                  >
-                    {loading ? "Uploading…" : "Upload"}
-                  </Button>
-                </div>
-                {proofPreview && (
-                  <img
-                    src={proofPreview}
-                    alt="Selected GCash payment proof preview"
-                    className="max-h-48 w-full rounded-lg border border-espresso/10 object-contain"
-                  />
-                )}
-                {proofError && (
-                  <p className="text-xs text-red-700">{proofError}</p>
-                )}
-                {booking.payment_proof_url && (
+              {/* proof upload — pending only; collapses once a proof is in */}
+              {isPending && hasProof && !replacingProof ? (
+                <div className="space-y-2">
                   <p className="text-xs text-moss">
                     ✓ Proof uploaded — your slot is held while the owner verifies payment.
                   </p>
-                )}
-              </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-espresso/60 hover:bg-espresso/5 hover:text-espresso"
+                    onClick={() => setReplacingProof(true)}
+                  >
+                    Upload a different receipt
+                  </Button>
+                </div>
+              ) : (
+                isPending && (
+                  <div className="space-y-2">
+                    <Label htmlFor="proof-file" className="text-sm font-medium">
+                      {hasProof ? "Replace Payment Proof" : "Upload Payment Proof"}
+                    </Label>
+                    <p className="text-xs text-espresso/55">
+                      Choose a photo of your GCash receipt (JPG, PNG, or WEBP · max 5 MB)
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        id="proof-file"
+                        type="file"
+                        accept={PROOF_ACCEPT}
+                        onChange={handleProofSelect}
+                        disabled={loading || booking.downpayment_status === "confirmed"}
+                        className="cursor-pointer border-espresso/20 bg-espresso/[0.04] text-espresso file:mr-3 file:rounded file:border-0 file:bg-espresso/10 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-espresso"
+                      />
+                      <Button
+                        onClick={handlePaymentProof}
+                        disabled={loading || !proofFile || booking.downpayment_status === "confirmed"}
+                        variant="outline"
+                        className="border-espresso/20 text-espresso hover:bg-espresso/5 hover:text-espresso"
+                      >
+                        {loading ? "Uploading…" : "Upload"}
+                      </Button>
+                    </div>
+                    {hasProof && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-espresso/60 hover:bg-espresso/5 hover:text-espresso"
+                        onClick={() => {
+                          clearProofSelection();
+                          setReplacingProof(false);
+                        }}
+                      >
+                        Keep current proof
+                      </Button>
+                    )}
+                    {proofPreview && (
+                      <img
+                        src={proofPreview}
+                        alt="Selected GCash payment proof preview"
+                        className="max-h-48 w-full rounded-lg border border-espresso/10 object-contain"
+                      />
+                    )}
+                    {proofError && (
+                      <p className="text-xs text-red-700">{proofError}</p>
+                    )}
+                  </div>
+                )
+              )}
 
               <div className="flex gap-2 justify-center pt-2">
                 <Button variant="outline" onClick={() => navigate("/")} className="border-espresso/20 text-espresso hover:bg-espresso/5 hover:text-espresso">
@@ -794,6 +1204,9 @@ export default function Book() {
                     setNotes("");
                     clearProofSelection();
                     setAgreedToRules(false);
+                    setStatusNotice(null);
+                    setStaleSnapshot(false);
+                    setReplacingProof(false);
                   }}
                 >
                   Book Another
@@ -802,6 +1215,85 @@ export default function Book() {
             </CardContent>
           </Card>
         )}
+        {/* ── Guest status lookup (any device, no login) ── */}
+        <Card className="border-espresso/10 bg-cream text-espresso shadow-[0_2px_16px_-8px_rgb(43_33_24/0.3)]">
+          <CardHeader>
+            <CardTitle className="text-base">Check your booking status</CardTitle>
+            <CardDescription>
+              Enter the ref code from your confirmation plus your phone number.
+              Tickets stay viewable for 7 days after your haircut.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={(e) => void handleLookup(e)} className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="lookup-code">Ref code</Label>
+                  <Input
+                    id="lookup-code"
+                    value={lookupCode}
+                    onChange={(e) => setLookupCode(e.target.value.toUpperCase())}
+                    placeholder="KX7Q2M9A"
+                    required
+                    className="font-mono tracking-wider tabular-nums"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="lookup-phone">Phone number</Label>
+                  <Input
+                    id="lookup-phone"
+                    value={lookupPhone}
+                    onChange={(e) => setLookupPhone(e.target.value)}
+                    placeholder="0917 123 4567"
+                    required
+                  />
+                </div>
+              </div>
+              <Button
+                type="submit"
+                disabled={lookupLoading}
+                variant="outline"
+                className="w-full border-espresso/20 text-espresso hover:bg-espresso/5 hover:text-espresso"
+              >
+                {lookupLoading ? "Looking up…" : "Check status"}
+              </Button>
+            </form>
+            {lookupError && (
+              <p className="mt-3 rounded-md border border-red-800/25 bg-red-50 px-3 py-2 text-sm text-red-900">
+                {lookupError}
+              </p>
+            )}
+            {lookupResult && (
+              <div className="mt-3 space-y-1 rounded-md border border-moss/30 bg-moss/[0.07] px-4 py-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-bold tracking-wider tabular-nums">
+                    {lookupResult.reference_code}
+                  </span>
+                  <Badge className={getStatusBadge(lookupResult.status)}>
+                    {customerStatusLabel(lookupResult.status)}
+                  </Badge>
+                </div>
+                <p className="text-espresso/70 tabular-nums">
+                  {new Date(lookupResult.slot_start).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}{" "}
+                  ·{" "}
+                  {new Date(lookupResult.slot_start).toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  })}
+                </p>
+                <p className="text-xs text-espresso/55">
+                  Appointment: {customerStatusLabel(lookupResult.status)}
+                  {" · "}Downpayment: {downpaymentLabel(lookupResult.downpayment_status)}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         <p className="text-center text-xs text-espresso/50">
           Downpayment required to confirm · No downpayment, no appointment
         </p>

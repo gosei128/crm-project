@@ -2,6 +2,13 @@ import { clearToken, getToken } from "./token";
 
 export const API_URL = import.meta.env.VITE_API_URL;
 
+if (!API_URL && import.meta.env.PROD) {
+  // Fail loudly in production builds instead of fetching "undefined/...".
+  console.error(
+    "[config] VITE_API_URL is not set. Point it at the live API, e.g. https://api.kabarbers.example.com",
+  );
+}
+
 export type UserRole = "owner" | "customer";
 
 export interface User {
@@ -37,6 +44,8 @@ export interface Booking {
   slot_end: string;
   status: string;
   created_at: string;
+  /** Short customer-facing reference for guest status lookup. */
+  reference_code: string | null;
   customer_name: string | null;
   customer_phone: string | null;
   pax: number;
@@ -204,6 +213,35 @@ export async function uploadPaymentProofFile(
   return res.json();
 }
 
+/** Guest status lookup — reference code + booking phone, no login needed. */
+export async function lookupBooking(code: string, phone: string): Promise<Booking> {
+  const params = new URLSearchParams({ code: code.trim(), phone: phone.trim() });
+  return request(`/bookings/lookup?${params.toString()}`);
+}
+
+/** Proof-file endpoint URL (private — fetch with auth, see fetchProofBlob). */
+export function proofFileUrl(bookingId: string): string {
+  return `${API_URL}/bookings/${bookingId}/proof-file`;
+}
+
+/** Download proof bytes with the stored token and return a blob object URL.
+ *  Callers must revoke it with URL.revokeObjectURL (see useProofImage). */
+export async function fetchProofBlob(bookingId: string): Promise<string> {
+  const token = getToken();
+  const res = await fetch(proofFileUrl(bookingId), {
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Download failed" }));
+    if (res.status === 401) clearToken();
+    throw new ApiError(res.status, error.detail || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 // --- Gallery (owner-managed work showcase) ---
 export interface GalleryPhoto {
   id: string;
@@ -334,6 +372,9 @@ export interface ShopStatus {
   hero_image_url: string | null;
   facebook_url: string | null;
   tiktok_url: string | null;
+  gcash_number: string | null;
+  gcash_account_name: string | null;
+  gcash_qr_url: string | null;
   updated_at: string;
 }
 
@@ -382,6 +423,43 @@ export async function updateShopSocials(data: {
   return request("/shop/socials", {
     method: "PATCH",
     body: JSON.stringify(data),
+  });
+}
+
+export async function updateShopPayment(data: {
+  gcash_number?: string;
+  gcash_account_name?: string;
+}): Promise<ShopStatus> {
+  return request("/shop/payment", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function uploadGcashQr(file: File): Promise<ShopStatus> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_URL}/shop/gcash-qr`, {
+    method: "POST",
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Upload failed" }));
+    if (res.status === 401) clearToken();
+    throw new ApiError(res.status, error.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function resetGcashQr(): Promise<ShopStatus> {
+  return request("/shop/gcash-qr", {
+    method: "DELETE",
   });
 }
 

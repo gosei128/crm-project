@@ -7,6 +7,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.shop_settings import ShopSettings
 from app.schemas.shop_settings import (
+    ShopPaymentUpdate,
     ShopSettingsRead,
     ShopSettingsUpdate,
     ShopSocialsUpdate,
@@ -58,8 +59,25 @@ def _get_or_create_settings(db: Session) -> ShopSettings:
     """Get the singleton shop settings row, creating it if it doesn't exist."""
     setting = db.query(ShopSettings).first()
     if not setting:
-        setting = ShopSettings(is_open=True, shop_name="Kabarbers")
+        setting = ShopSettings(
+            is_open=True,
+            shop_name="Kabarbers",
+            gcash_number="09550996494",
+            gcash_account_name="MA**N D.",
+        )
         db.add(setting)
+        db.commit()
+        db.refresh(setting)
+        return setting
+    # Backfill GCash defaults on older rows (no migration data loss).
+    changed = False
+    if not getattr(setting, "gcash_number", None):
+        setting.gcash_number = "09550996494"
+        changed = True
+    if not getattr(setting, "gcash_account_name", None):
+        setting.gcash_account_name = "MA**N D."
+        changed = True
+    if changed:
         db.commit()
         db.refresh(setting)
     return setting
@@ -119,8 +137,17 @@ async def upload_hero_image(
             detail=f"Image must be {settings.max_proof_mb} MB or smaller.",
         )
 
+    from app.core.upload_security import verify_image_contents
+
+    problem = verify_image_contents(contents, ext)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=problem,
+        )
+
     hero_dir = _hero_dir()
-    filename = f"hero-{uuid.uuid4().hex[:8]}{ext}"
+    filename = f"hero-{uuid.uuid4().hex}{ext}"
     try:
         (hero_dir / filename).write_bytes(contents)
     except OSError:
@@ -182,6 +209,145 @@ def update_shop_socials(
         setting.facebook_url = _clean_social_url(patch["facebook_url"], "facebook_url")
     if "tiktok_url" in patch:
         setting.tiktok_url = _clean_social_url(patch["tiktok_url"], "tiktok_url")
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def _clean_gcash_number(raw: str | None) -> str | None:
+    """Trim spaces; blank clears to the default number. Digits only, 10-13 chars."""
+    if raw is None:
+        return None
+    digits = "".join(c for c in raw.strip() if c.isdigit())
+    if not digits:
+        return None
+    if len(digits) < 10 or len(digits) > 13:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GCash number must be 10-13 digits, e.g. 09550996494.",
+        )
+    return digits
+
+
+@router.patch("/payment", response_model=ShopSettingsRead)
+def update_shop_payment(
+    data: ShopPaymentUpdate,
+    current_user=Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Owner sets the GCash number + account name shown at checkout."""
+    setting = _get_or_create_settings(db)
+    patch = data.model_dump(exclude_unset=True)
+    if "gcash_number" in patch:
+        cleaned = _clean_gcash_number(patch["gcash_number"])
+        # Blank clears back to the default number so checkout never breaks.
+        setting.gcash_number = cleaned or "09550996494"
+    if "gcash_account_name" in patch:
+        name = (patch["gcash_account_name"] or "").strip()
+        setting.gcash_account_name = name or "MA**N D."
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def _gcash_dir() -> Path:
+    d = Path(settings.upload_dir)
+    if not d.is_absolute():
+        d = Path.cwd() / d
+    d = d / "gcash"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _delete_local_gcash_file(gcash_qr_url: str | None) -> None:
+    """Remove a previously uploaded GCash QR file."""
+    if not gcash_qr_url or "/uploads/gcash/" not in gcash_qr_url:
+        return
+    try:
+        rel = (
+            gcash_qr_url.rsplit("/uploads/", 1)[1]
+            .split("?", 1)[0]
+            .split("#", 1)[0]
+        )
+        if not rel.startswith("gcash/") or ".." in rel or "\\" in rel:
+            return
+        if "/" in rel[len("gcash/"):]:
+            return
+        root = Path(settings.upload_dir)
+        if not root.is_absolute():
+            root = Path.cwd() / root
+        (root / rel).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+@router.post("/gcash-qr", response_model=ShopSettingsRead)
+async def upload_gcash_qr(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user=Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Owner uploads the GCash QR shown at checkout (JPG/PNG/WEBP, 5 MB max)."""
+    ext = _ALLOWED_IMAGE_TYPES.get((file.content_type or "").lower())
+    if ext is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPG, PNG, or WEBP images are allowed.",
+        )
+
+    contents = await file.read()
+    max_bytes = settings.max_proof_mb * 1024 * 1024
+    if not contents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+    if len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Image must be {settings.max_proof_mb} MB or smaller.",
+        )
+
+    from app.core.upload_security import verify_image_contents
+
+    problem = verify_image_contents(contents, ext)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=problem,
+        )
+
+    gcash_dir = _gcash_dir()
+    filename = f"gcash-{uuid.uuid4().hex}{ext}"
+    try:
+        (gcash_dir / filename).write_bytes(contents)
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save the uploaded image. Please try again.",
+        )
+    finally:
+        await file.close()
+
+    setting = _get_or_create_settings(db)
+    _delete_local_gcash_file(setting.gcash_qr_url)
+    base = str(request.base_url).rstrip("/")
+    setting.gcash_qr_url = f"{base}/uploads/gcash/{filename}"
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+@router.delete("/gcash-qr", response_model=ShopSettingsRead)
+def reset_gcash_qr(
+    current_user=Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Owner removes the custom QR — checkout falls back to number-only."""
+    setting = _get_or_create_settings(db)
+    _delete_local_gcash_file(setting.gcash_qr_url)
+    setting.gcash_qr_url = None
     db.commit()
     db.refresh(setting)
     return setting

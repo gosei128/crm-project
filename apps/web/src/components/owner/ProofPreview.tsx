@@ -10,7 +10,8 @@ import {
 import { Check, Copy, ExternalLink, Receipt } from "lucide-react";
 import type { Booking } from "@/lib/api";
 import { formatDateTime, formatSlot } from "@/lib/format";
-import { isImageUrl } from "@/lib/media";
+import { isImageUrl, isPrivateProofUrl } from "@/lib/media";
+import { useProofImage } from "@/hooks/useProofImage";
 
 export default function ProofPreview({
   booking,
@@ -53,16 +54,27 @@ export default function ProofPreview({
   }
 
   async function handleCopy() {
-    if (!booking?.payment_proof_url) return;
+    const code = booking?.reference_code ?? booking?.payment_proof_url;
+    if (!code) return;
     try {
-      await navigator.clipboard.writeText(booking.payment_proof_url);
-      setCopiedId(booking.id);
+      await navigator.clipboard.writeText(code);
+      setCopiedId(booking?.id ?? null);
     } catch {
       setCopiedId(null);
     }
   }
 
+  function handleOpen() {
+    if (src) window.open(src, "_blank", "noopener,noreferrer");
+    else if (proofUrl && !isPrivateProofUrl(proofUrl))
+      window.open(proofUrl, "_blank", "noopener,noreferrer");
+  }
+
   const proofUrl = booking?.payment_proof_url ?? null;
+  const { src, loading: proofLoading, error: proofError } = useProofImage(
+    booking?.id,
+    proofUrl,
+  );
 
   return (
     <Sheet
@@ -113,11 +125,37 @@ export default function ProofPreview({
                   {formatDateTime(booking.created_at)}
                 </dd>
               </div>
+              {booking.reference_code && (
+                <div>
+                  <dt className="text-muted-foreground">Ref code</dt>
+                  <dd className="mt-0.5 font-mono font-bold tracking-wider tabular-nums">
+                    {booking.reference_code}
+                  </dd>
+                </div>
+              )}
             </dl>
           )}
 
           {proofUrl ? (
-            isImageUrl(proofUrl) ? (
+            proofLoading ? (
+              <div className="rounded-lg border bg-card p-6 text-center">
+                <p className="animate-pulse text-sm text-muted-foreground">Loading proof…</p>
+              </div>
+            ) : src ? (
+              <button type="button" onClick={handleOpen} className="block w-full cursor-zoom-in">
+                <img
+                  src={src}
+                  alt="GCash payment proof uploaded by customer"
+                  className="w-full rounded-lg border object-contain"
+                  loading="lazy"
+                />
+              </button>
+            ) : proofError ? (
+              <div className="rounded-lg border bg-card p-4 text-center">
+                <p className="text-sm font-medium">Could not load proof</p>
+                <p className="mt-1 text-xs text-muted-foreground">{proofError}</p>
+              </div>
+            ) : isImageUrl(proofUrl) ? (
               <a href={proofUrl} target="_blank" rel="noopener noreferrer">
                 <img
                   src={proofUrl}
@@ -151,14 +189,13 @@ export default function ProofPreview({
                 ) : (
                   <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                 )}
-                {copied ? "Copied" : "Copy link"}
+                {copied ? "Copied" : "Copy ref code"}
               </Button>
               <Button
                 size="sm"
                 className="flex-1"
-                render={
-                  <a href={proofUrl} target="_blank" rel="noopener noreferrer" />
-                }
+                onClick={handleOpen}
+                disabled={proofLoading || (!src && isPrivateProofUrl(proofUrl))}
               >
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                 Open proof

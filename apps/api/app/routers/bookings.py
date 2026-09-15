@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status, APIRouter, Depends, Query, File, UploadFile, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta, time
 from typing import Optional
@@ -22,6 +23,7 @@ from app.schemas.booking import (
 )
 from app.services import booking_service
 from app.business_rules import PENDING_TTL_MINUTES
+from app.core.rate_limit import limiter
 from app.core.dependency import (
     get_current_user,
     get_optional_user,
@@ -60,6 +62,8 @@ def get_available_slot(
 ):
     if not is_shop_open(db):
         return []
+    if target_date < date.today() or target_date > date.today() + timedelta(days=90):
+        return []
     # Single-haircut: service_id optional, defaults to singleton
     return booking_service.get_available_slots(service_id, db, target_date)
 
@@ -67,7 +71,9 @@ def get_available_slot(
 @router.post(
     "/public", response_model=BookingRead, status_code=status.HTTP_201_CREATED
 )
+@limiter.limit(settings.booking_rate_limit)
 def create_public_booking(
+    request: Request,
     data: BookingCreatePublic,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
@@ -108,7 +114,8 @@ def create_public_booking(
 @router.post(
     "/authenticated", response_model=BookingRead, status_code=status.HTTP_201_CREATED
 )
-def create_authenticated_booking(data: BookingCreatePublic, current_user: User = Depends(require_customer), db: Session = Depends(get_db)):
+@limiter.limit(settings.booking_rate_limit)
+def create_authenticated_booking(request: Request, data: BookingCreatePublic, current_user: User = Depends(require_customer), db: Session = Depends(get_db)):
     """Authenticated customer booking — links booking to account."""
     if not is_shop_open(db):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shop is currently closed. Bookings are not being accepted.")
@@ -138,6 +145,14 @@ def get_weekly_schedule(
 ):
     """Return available + booked slots for each day in a 7-day window starting from start_date (Monday)."""
     from app.models.shop_settings import ShopSettings
+
+    # Clamp the window: no far-past lookups, no far-future scans.
+    today = date.today()
+    if start_date < today - timedelta(days=7) or start_date > today + timedelta(days=90):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date must be within the last 7 days and next 90 days.",
+        )
 
     shop = db.query(ShopSettings).first()
     is_open = shop.is_open if shop else True
@@ -210,14 +225,14 @@ def get_weekly_schedule(
         for slot_start, slot_end, service_id in all_slots:
             states = statuses_by_slot.get(slot_start, set())
             if BookingStatus.BOOKED.value in states:
-                status = "booked"
+                slot_status = "booked"
             elif BookingStatus.PENDING.value in states:
-                status = "held"
+                slot_status = "held"
             else:
-                status = "available"
+                slot_status = "available"
             day_slots.append({
                 "time": slot_start.isoformat(),
-                "status": status,
+                "status": slot_status,
             })
 
         # Sort by time
@@ -286,6 +301,7 @@ def upload_payment_proof(
 
     from app.models.booking import DownpaymentStatus
 
+    _delete_local_proof_file(booking.payment_proof_url, _upload_dir())
     booking.payment_proof_url = data.payment_proof_url
     booking.downpayment_status = DownpaymentStatus.PENDING_VERIFICATION.value
     db.commit()
@@ -307,6 +323,18 @@ def _upload_dir() -> Path:
     d = Path(settings.upload_dir)
     if not d.is_absolute():
         d = Path.cwd() / d
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _proofs_dir() -> Path:
+    """Private directory for payment proof bytes.
+
+    Deliberately NOT served by the static /uploads mounts (see main.py),
+    so proof images are only reachable through the authed
+    GET /bookings/{id}/proof-file endpoint.
+    """
+    d = _upload_dir() / "proofs"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -367,8 +395,20 @@ def _guest_upload_window_expired(booking: Booking) -> bool:
 
 
 def _delete_local_proof_file(old_url: str | None, upload_dir: Path) -> None:
-    """Remove a previously uploaded local file (ignores external URLs)."""
+    """Remove previously uploaded local proof files (ignores external URLs).
+
+    Handles both legacy public URLs (/uploads/{file}) and current private
+    endpoint URLs (/bookings/{id}/proof-file) by deleting every local file
+    belonging to the booking.
+    """
     if not old_url or "/uploads/" not in old_url:
+        # Endpoint-style URL — extract the booking id and wipe its files.
+        if old_url and "/proof-file" in old_url:
+            try:
+                booking_id = old_url.rstrip("/").rsplit("/", 2)[-2]
+                _delete_booking_proof_files(booking_id)
+            except Exception:
+                pass
         return
     try:
         filename = old_url.rsplit("/uploads/", 1)[1].split("?", 1)[0].split("#", 1)[0]
@@ -380,10 +420,58 @@ def _delete_local_proof_file(old_url: str | None, upload_dir: Path) -> None:
         pass
 
 
+def _delete_booking_proof_files(booking_id: str) -> None:
+    """Delete every local proof file for a booking: legacy root uploads
+    ({id}-*), current private files (proofs/{id}.*)."""
+    try:
+        safe = re.sub(r"[^A-Za-z0-9-]", "", booking_id or "")
+        if not safe:
+            return
+        upload_dir = _upload_dir()
+        for path in upload_dir.glob(f"{safe}-*"):
+            if path.is_file() and "/" not in path.name:
+                path.unlink(missing_ok=True)
+        proofs = _proofs_dir()
+        for path in proofs.glob(f"{safe}.*"):
+            if path.is_file():
+                path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+_PROOF_MEDIA_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+
+
+def _find_proof_path(booking: Booking) -> Path | None:
+    """Resolve a booking's local proof file, or None for external/missing."""
+    url = booking.payment_proof_url
+    if not url:
+        return None
+    if "/uploads/" in url:
+        # Legacy public URL (/uploads/{file}) — file may sit at the upload
+        # root or already under proofs/.
+        filename = url.rsplit("/uploads/", 1)[1].split("?", 1)[0].split("#", 1)[0]
+        if not filename or "/" in filename or "\\" in filename or ".." in filename:
+            return None
+        for candidate in (_proofs_dir() / filename, _upload_dir() / filename):
+            if candidate.is_file():
+                return candidate
+        return None
+    if "/proof-file" in url:
+        # Current endpoint-style URL — deterministic private filename.
+        matches = sorted(_proofs_dir().glob(f"{booking.id}.*"))
+        for path in matches:
+            if path.is_file() and path.suffix.lower() in _PROOF_MEDIA_TYPES:
+                return path
+        return None
+    return None  # external URL — served directly by the client, not here
+
+
 @router.post(
     "/{booking_id}/payment-proof-file",
     response_model=BookingRead,
 )
+@limiter.limit(settings.upload_rate_limit)
 async def upload_payment_proof_file(
     booking_id: str,
     request: Request,
@@ -414,8 +502,14 @@ async def upload_payment_proof_file(
             detail="Only JPG, PNG, or WEBP images are allowed.",
         )
 
-    contents = await file.read()
     max_bytes = settings.max_proof_mb * 1024 * 1024
+    # Bounded read: one byte over the cap is enough to reject oversize
+    # files without buffering a giant upload into RAM.
+    contents = await file.read(max_bytes + 1)
+    try:
+        await file.close()
+    except Exception:
+        pass
     if not contents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -427,10 +521,22 @@ async def upload_payment_proof_file(
             detail=f"Image must be {settings.max_proof_mb} MB or smaller.",
         )
 
-    upload_dir = _upload_dir()
-    filename = f"{booking_id}-{uuid.uuid4().hex[:8]}{ext}"
+    from app.core.upload_security import verify_image_contents
+
+    problem = verify_image_contents(contents, ext)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=problem,
+        )
+
+    proofs_dir = _proofs_dir()
+    filename = f"{booking_id}{ext}"
+    # Remove any previous proof for this booking first (also covers a
+    # re-upload with a different extension, and legacy root files).
+    _delete_booking_proof_files(booking_id)
     try:
-        (upload_dir / filename).write_bytes(contents)
+        (proofs_dir / filename).write_bytes(contents)
     except OSError:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -441,13 +547,67 @@ async def upload_payment_proof_file(
 
     from app.models.booking import DownpaymentStatus
 
-    _delete_local_proof_file(booking.payment_proof_url, upload_dir)
     base = str(request.base_url).rstrip("/")
-    booking.payment_proof_url = f"{base}/uploads/{filename}"
+    booking.payment_proof_url = f"{base}/bookings/{booking_id}/proof-file"
     booking.downpayment_status = DownpaymentStatus.PENDING_VERIFICATION.value
     db.commit()
     db.refresh(booking)
     return booking
+
+
+@router.get(
+    "/{booking_id}/proof-file",
+)
+@limiter.limit(settings.upload_rate_limit)
+def download_proof_file(
+    booking_id: str,
+    request: Request,
+    current_user: User | None = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Download the GCash proof image (owner, owning customer, or the guest
+    who made the booking while it is still pending inside the payment
+    window). Proof bytes are never served publicly — unlike the old
+    /uploads/{file} URLs, which now 404."""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
+        )
+    if current_user is not None and current_user.role == "owner":
+        pass
+    elif current_user is not None:
+        if not _can_access_booking(booking, current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own bookings.",
+            )
+    else:
+        if booking.customer_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This booking is linked to an account. Log in as its owner to view it.",
+            )
+        if booking.status != BookingStatus.PENDING.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Booking is '{booking.status}', not pending — proof is no longer available",
+            )
+        if _guest_upload_window_expired(booking):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The payment window has passed — proof is no longer available.",
+            )
+    path = _find_proof_path(booking)
+    if path is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Proof file not found"
+        )
+    return FileResponse(
+        path,
+        media_type=_PROOF_MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream"),
+        filename=f"gcash-proof-{booking.reference_code or booking_id}{path.suffix.lower()}",
+    )
 
 
 # ---------- Authenticated customer ----------
@@ -486,6 +646,64 @@ def my_bookings(
     current_user: User = Depends(require_customer), db: Session = Depends(get_db)
 ):
     return db.query(Booking).filter(Booking.customer_id == current_user.id).all()
+
+
+def _normalize_reference_code(raw: str | None) -> str:
+    """Uppercase alphanumeric only — accepts 'kx7q-2m9a', 'KX7Q 2M9A', etc."""
+    return re.sub(r"[^A-Z0-9]", "", (raw or "").upper())
+
+
+@router.get("/lookup", response_model=BookingRead)
+@limiter.limit(settings.lookup_rate_limit)
+def lookup_booking(
+    request: Request,
+    code: str = Query(...),
+    phone: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Guest status lookup — no login needed. The reference code plus the
+    booking phone number act as the credential. Wrong code and wrong phone
+    both return 404 so codes can't be enumerated. Tickets also stop
+    resolving N days after Haircut Done (same 404 — expiry leaks nothing)."""
+    normalized = _normalize_reference_code(code)
+    booking = (
+        db.query(Booking).filter(Booking.reference_code == normalized).first()
+        if normalized
+        else None
+    )
+    if (
+        booking is None
+        or not _normalize_phone(phone)
+        or _normalize_phone(booking.customer_phone) != _normalize_phone(phone)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
+        )
+    if _ticket_expired(booking):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
+        )
+    return booking
+
+
+def _ticket_expired(booking: Booking) -> bool:
+    """True when a completed booking aged past the guest-lookup grace period.
+
+    Only `complete` expires — every other status keeps resolving. A missing
+    timestamp on a complete booking fails closed (treated as expired).
+    """
+    if booking.status != BookingStatus.COMPLETE.value:
+        return False
+    completed = booking.completed_at
+    if completed is None:
+        return True
+    if completed.tzinfo is not None:
+        completed = completed.replace(tzinfo=None)
+    try:
+        grace_days = int(settings.completed_lookup_days)
+    except (TypeError, ValueError):
+        grace_days = 7
+    return datetime.utcnow() - completed > timedelta(days=max(0, grace_days))
 
 
 # ---------- Owner dashboard / status transitions ----------

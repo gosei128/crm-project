@@ -26,6 +26,12 @@ def seed_all() -> None:
             if not shop.shop_name:
                 shop.shop_name = "Kabarbers"
                 changed = True
+            if not getattr(shop, "gcash_number", None):
+                shop.gcash_number = "09550996494"
+                changed = True
+            if not getattr(shop, "gcash_account_name", None):
+                shop.gcash_account_name = "MA**N D."
+                changed = True
             if changed:
                 db.commit()
 

@@ -103,8 +103,17 @@ async def upload_gallery_image(
             detail=f"Image must be {settings.max_proof_mb} MB or smaller.",
         )
 
+    from app.core.upload_security import verify_image_contents
+
+    problem = verify_image_contents(contents, ext)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=problem,
+        )
+
     gallery_dir = _gallery_dir()
-    filename = f"gallery-{uuid.uuid4().hex[:8]}{ext}"
+    filename = f"gallery-{uuid.uuid4().hex}{ext}"
     try:
         (gallery_dir / filename).write_bytes(contents)
     except OSError:
