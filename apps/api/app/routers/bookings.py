@@ -20,6 +20,8 @@ from app.schemas.booking import (
     BookingRead,
     BookingStatusPatch,
     BookingPaymentProof,
+    DayAvailabilityResponse,
+    MonthAvailabilityResponse,
 )
 from app.services import booking_service
 from app.business_rules import PENDING_TTL_MINUTES
@@ -52,6 +54,64 @@ def _can_access_booking(booking: Booking, user: User) -> bool:
 
 
 # ---------- Public / client-facing ----------
+
+
+@router.get("/availability", response_model=DayAvailabilityResponse | MonthAvailabilityResponse)
+def get_availability(
+    target_day: Optional[date] = Query(default=None, alias="date", description="Day as YYYY-MM-DD"),
+    target_month: Optional[str] = Query(default=None, alias="month", description="Month as YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    """Scheduling UI contract — server-derived slot truth.
+
+    - `?date=YYYY-MM-DD` → full slot list with status + `expires_at`
+      for pending holds (drives DaySlotPanel + countdown).
+    - `?month=YYYY-MM` → per-day `{has_busy, has_pending, is_closed}`
+      summary (drives CalendarGrid dots).
+
+    Pass exactly one of `date` / `month`. Status derivation (including
+    the 15-minute pending expiry) lives here, never on the frontend.
+    """
+    if (target_day is None) == (target_month is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pass exactly one of ?date=YYYY-MM-DD or ?month=YYYY-MM.",
+        )
+    if target_day is not None:
+        if target_day < date.today() - timedelta(days=7) or target_day > date.today() + timedelta(days=90):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="date must be within the last 7 days and next 90 days.",
+            )
+        return booking_service.get_day_availability(db, target_day)
+    assert target_month is not None
+    import re as _re
+
+    m = _re.fullmatch(r"(\d{4})-(\d{2})", target_month.strip())
+    if not m:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="month must be YYYY-MM.",
+        )
+    year, mon = int(m.group(1)), int(m.group(2))
+    if mon < 1 or mon > 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="month must be YYYY-MM.",
+        )
+
+    first = date(year, mon, 1)
+    today = date.today()
+    # Reject months fully outside the bookable horizon (allow the
+    # overlapping current month even if day 1 is >7 days past).
+    if first > today + timedelta(days=90) or (
+        first.year < today.year or (first.year == today.year and first.month < today.month)
+    ) and (today.year * 12 + today.month) - (year * 12 + mon) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="month must be within the last month and next 90 days.",
+        )
+    return booking_service.get_month_summary(db, year, mon)
 
 
 @router.get("/available_slots", response_model=list[datetime])
@@ -106,6 +166,14 @@ def create_public_booking(
             pax=data.pax,
             notes=data.notes,
         )
+    except booking_service.SlotTakenError as e:
+        # Expected race: slot flipped Pending/Booked between day-load and
+        # submit. 409 (not generic 400) so the UI shows the specific
+        # "someone just took this slot" message and refreshes the day.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{booking_service.SlotTakenError.CODE}: {e}",
+        )
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
     return new_booking
@@ -132,6 +200,11 @@ def create_authenticated_booking(request: Request, data: BookingCreatePublic, cu
             customer_phone=data.customer_phone,
             pax=data.pax,
             notes=data.notes,
+        )
+    except booking_service.SlotTakenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{booking_service.SlotTakenError.CODE}: {e}",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -635,6 +708,11 @@ def create_bookings(
             customer_phone=data.customer_phone,
             pax=data.pax,
             notes=data.notes,
+        )
+    except booking_service.SlotTakenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{booking_service.SlotTakenError.CODE}: {e}",
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))

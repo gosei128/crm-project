@@ -14,6 +14,46 @@ REF_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 REF_LENGTH = 8
 
 
+class SlotTakenError(ValueError):
+    """Raised when a slot was taken between load and submit.
+
+    Subclasses ValueError so existing callers still catch it, but routers
+    can map it specifically to HTTP 409 (with a stable SLOT_TAKEN code)
+    instead of a generic 400.
+    """
+
+    CODE = "SLOT_TAKEN"
+
+
+def _pending_ttl_minutes() -> int:
+    try:
+        from app.business_rules import PENDING_TTL_MINUTES
+
+        return int(PENDING_TTL_MINUTES)
+    except Exception:
+        return 15
+
+
+def _is_stale_pending(created_at: datetime | None) -> bool:
+    """True when a pending hold aged past the payment window.
+
+    The scheduler job flips these to EXPIRED, but availability must not
+    keep reporting them as blocking in the gap before the sweep runs —
+    the frontend renders exactly what the backend says is true right now.
+    """
+    if created_at is None:
+        return False
+    created = created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
+    return datetime.utcnow() - created > timedelta(minutes=_pending_ttl_minutes())
+
+
+def _pending_expires_at(created_at: datetime | None) -> datetime | None:
+    if created_at is None:
+        return None
+    created = created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
+    return created + timedelta(minutes=_pending_ttl_minutes())
+
+
 def generate_reference_code() -> str:
     """Short customer-facing booking reference, e.g. 'KX7Q2M9A'."""
     return "".join(secrets.choice(REF_ALPHABET) for _ in range(REF_LENGTH))
@@ -161,7 +201,7 @@ def create_booking(
     # Verify the slot is currently available (quick application-level check)
     available_slots = get_available_slots(service_id, db, slot_start.date())
     if slot_start not in available_slots:
-        raise ValueError("This slot is no longer available")
+        raise SlotTakenError("This slot is no longer available")
 
     # Insert with a fresh candidate per attempt: on IntegrityError we must
     # tell a reference-code collision (safe to retry) apart from a slot
@@ -190,16 +230,186 @@ def create_booking(
             db.rollback()
             if db.query(Booking.id).filter(Booking.reference_code == code).first():
                 continue  # code collision — regenerate and retry
-            raise ValueError(
+            raise SlotTakenError(
                 "This slot was just taken by another customer. "
                 "Please choose a different time."
             )
         db.refresh(new_booking)
         return new_booking
-    raise ValueError(
+    raise SlotTakenError(
         "This slot was just taken by another customer. "
         "Please choose a different time."
     )
+
+
+def _candidate_slots_for_date(
+    db: Session, service_id: str, target_date: date
+) -> list[datetime]:
+    """Discrete slot starts from every Availability rule for a weekday.
+
+    Shared by get_available_slots / day / month helpers so all three agree
+    on business hours, slot length, and the lunch-break exclusion.
+    """
+    day_of_week = target_date.weekday()
+    rules = (
+        db.query(Availability)
+        .filter(
+            Availability.service_id == service_id,
+            Availability.day_of_week == day_of_week,
+        )
+        .all()
+    )
+    if not rules:
+        return []
+    service = db.query(Service).filter(Service.id == service_id).first()
+    if service is None or not service.is_active:
+        return []
+    minutes = service.duration_minutes or 30
+    if minutes <= 0:
+        return []
+    slot_length = timedelta(minutes=minutes)
+    out: list[datetime] = []
+    for rule in rules:
+        current = datetime.combine(target_date, rule.start_time)
+        end = datetime.combine(target_date, rule.end_time)
+        guard = 0
+        while current + slot_length <= end and guard < 1000:
+            guard += 1
+            slot_end = current + slot_length
+            if not _slots_overlap_lunch(current, slot_end):
+                out.append(current)
+            current += slot_length
+    return sorted(out)
+
+
+def _blocking_map_for_date(
+    db: Session, service_id: str, target_date: date
+) -> dict[datetime, dict]:
+    """Map slot_start -> {status, expires_at} for blocking bookings.
+
+    Stale pendings (past the 15-minute payment window but not yet swept
+    to EXPIRED) are treated as non-blocking so the day panel shows them
+    as Available immediately.
+    """
+    day_start = datetime.combine(target_date, time.min)
+    day_end = datetime.combine(target_date, time.max)
+    rows = (
+        db.query(Booking.slot_start, Booking.status, Booking.created_at)
+        .filter(
+            Booking.service_id == service_id,
+            Booking.slot_start >= day_start,
+            Booking.slot_end <= day_end,
+            Booking.status.in_(BLOCKING_STATUSES),
+        )
+        .all()
+    )
+    by_slot: dict[datetime, dict] = {}
+    for slot_start, st, created_at in rows:
+        if st == BookingStatus.PENDING.value and _is_stale_pending(created_at):
+            continue
+        existing = by_slot.get(slot_start)
+        if existing is None:
+            by_slot[slot_start] = {
+                "status": "booked" if st == BookingStatus.BOOKED.value else "pending",
+                "expires_at": _pending_expires_at(created_at)
+                if st == BookingStatus.PENDING.value
+                else None,
+            }
+        elif st == BookingStatus.BOOKED.value:
+            # Booked wins over a competing pending hold on the same slot.
+            by_slot[slot_start] = {"status": "booked", "expires_at": None}
+    return by_slot
+
+
+def get_day_availability(
+    db: Session, target_date: date
+) -> dict:
+    """Full slot list with server-derived status for one date.
+
+    Returns {"date", "is_open", "slots": [{time, status, expires_at}]}.
+    Past dates return an empty slot list (never bookable).
+    """
+    from app.models.shop_settings import ShopSettings
+
+    shop = db.query(ShopSettings).first()
+    is_open = shop.is_open if shop else True
+    svc = get_singleton_service(db)
+    if svc is None or target_date < date.today():
+        return {
+            "date": target_date.isoformat(),
+            "is_open": is_open,
+            "slots": [],
+        }
+    candidates = _candidate_slots_for_date(db, str(svc.id), target_date)
+    blocking = _blocking_map_for_date(db, str(svc.id), target_date)
+    slots = []
+    for slot_start in candidates:
+        info = blocking.get(slot_start)
+        if info is None:
+            slots.append(
+                {"time": slot_start.isoformat(), "status": "available", "expires_at": None}
+            )
+        else:
+            slots.append(
+                {
+                    "time": slot_start.isoformat(),
+                    "status": info["status"],
+                    "expires_at": info["expires_at"].isoformat()
+                    if info["expires_at"] is not None
+                    else None,
+                }
+            )
+    return {"date": target_date.isoformat(), "is_open": is_open, "slots": slots}
+
+
+def get_month_summary(db: Session, year: int, month: int) -> dict:
+    """Per-day busy/pending flags for a calendar month.
+
+    Drives CalendarGrid dots without the frontend deriving status from
+    raw booking rows. Days with no Availability rules report is_closed.
+    """
+    import calendar as _cal
+
+    last_day = _cal.monthrange(year, month)[1]
+    svc = get_singleton_service(db)
+    days = []
+    for day_num in range(1, last_day + 1):
+        target = date(year, month, day_num)
+        if svc is None:
+            days.append(
+                {
+                    "date": target.isoformat(),
+                    "has_busy": False,
+                    "has_pending": False,
+                    "is_closed": True,
+                }
+            )
+            continue
+        candidates = _candidate_slots_for_date(db, str(svc.id), target)
+        if not candidates:
+            days.append(
+                {
+                    "date": target.isoformat(),
+                    "has_busy": False,
+                    "has_pending": False,
+                    "is_closed": True,
+                }
+            )
+            continue
+        blocking = _blocking_map_for_date(db, str(svc.id), target)
+        has_pending = any(
+            s in blocking for s in candidates if blocking.get(s, {}).get("status") == "pending"
+        )
+        has_busy = any(s in blocking for s in candidates)
+        days.append(
+            {
+                "date": target.isoformat(),
+                "has_busy": has_busy,
+                "has_pending": has_pending,
+                "is_closed": False,
+            }
+        )
+    return {"month": f"{year:04d}-{month:02d}", "days": days}
 
 
 def confirm_downpayment(db: Session, booking: Booking) -> Booking:

@@ -1,46 +1,63 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   getShopStatus,
   getSingletonService,
   getShopRules,
-  getWeeklySchedule,
   createPublicBooking,
   lookupBooking,
   uploadPaymentProofFile,
+  isSlotTakenError,
+  slotTakenMessage,
   type Service,
   type ShopRule,
   type ShopStatus,
   type Booking,
-  type SlotInfo,
 } from "@/lib/api";
 import { PROOF_ACCEPT, validateProofFile } from "@/lib/media";
 import GcashPaymentCard from "@/components/booking/GcashPaymentCard";
+import SchedulingSection from "@/components/scheduling/SchedulingSection";
+import { formatCountdown, useCountdown } from "@/components/scheduling/useCountdown";
 import PublicNav, { NavSentinel } from "@/components/public/PublicNav";
 import PublicFooter from "@/components/public/PublicFooter";
 
 type Step = "datetime" | "info" | "rules" | "success";
 
-function formatDate(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function monthOfDay(day: string): string {
+  return day.slice(0, 7);
 }
 
-function getMonday(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
+function currentMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Live countdown for the success-ticket hold notice. Expiry truth
+ *  comes from the server (created_at + 15-min TTL); this only displays it. */
+function HoldCountdown({ createdAt }: { createdAt: string }) {
+  const expiresAt = (() => {
+    try {
+      return new Date(new Date(createdAt).getTime() + 15 * 60000).toISOString();
+    } catch {
+      return null;
+    }
+  })();
+  const secondsLeft = useCountdown(expiresAt);
+  if (secondsLeft === null) return null;
+  if (secondsLeft <= 0) return <span>Hold expired — please book again.</span>;
+  return (
+    <span className="font-mono font-bold tabular-nums" aria-live="polite">
+      {formatCountdown(secondsLeft)} left
+    </span>
+  );
 }
 
 function formatSlotRange(slot: string, durationMinutes?: number) {
@@ -119,13 +136,20 @@ export default function Book() {
   const [service, setService] = useState<Service | null>(null);
   const [shopRules, setShopRules] = useState<ShopRule[]>([]);
   const [shopStatus, setShopStatus] = useState<ShopStatus | null>(null);
-  const [daySlots, setDaySlots] = useState<SlotInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- selections ---
+  // --- selections (owned by the SchedulingSection container) ---
   const [selectedDate, setSelectedDate] = useState<string>(searchParams.get("date") ?? "");
   const [selectedSlot, setSelectedSlot] = useState<string | null>(searchParams.get("time"));
+  const [viewMonth, setViewMonth] = useState<string>(() => {
+    const d = searchParams.get("date");
+    return d ? monthOfDay(d) : currentMonth();
+  });
+  // Specific "someone just took this slot" notice (409) — distinct from
+  // the generic error banner, with the day auto-refreshed underneath.
+  const [takenSlotNotice, setTakenSlotNotice] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   // --- form ---
   const [customerName, setCustomerName] = useState("");
@@ -177,13 +201,6 @@ export default function Book() {
 
   // --- same-device resume (one-tap shortcut; ref-code lookup works anywhere) ---
   const [stored, setStored] = useState<StoredBooking | null>(loadStoredBooking);
-  // Mirror of `step` for the slot-loading effect: reading state there would
-  // retrigger it, so a ref is used. Synced here — declared before that
-  // effect, so ordering guarantees it always sees the post-render value.
-  const stepRef = useRef<Step>(step);
-  useEffect(() => {
-    stepRef.current = step;
-  });
 
   // Revoke the preview object URL when it changes or on unmount.
   useEffect(() => {
@@ -438,41 +455,26 @@ export default function Book() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, booking?.id, booking?.status, booking?.payment_proof_url]);
 
-  // Pre-filled slot from Schedule (?date=&time=): keep it selected when
-  // (re)loading that day's slots instead of resetting the selection.
-  const preTime = searchParams.get("time");
-
-  // --- load slots when date is set — Google-style: show both booked & available via weekly schedule ---
-  useEffect(() => {
-    if (!service || !selectedDate) return;
-    // Resumed a finished booking: leave the restored selection alone.
-    if (stepRef.current === "success") return;
-    setLoading(true);
+  // --- handlers (scheduling state lives in SchedulingSection) ---
+  function handleDateSelect(dateStr: string) {
+    setSelectedDate(dateStr);
+    // New date → drop the old time selection.
+    setSelectedSlot(null);
+    setTakenSlotNotice(null);
     setError(null);
+  }
 
-    const monday = getMonday(new Date(selectedDate + "T12:00:00"));
-    const mondayStr = formatDate(monday);
-    getWeeklySchedule(mondayStr)
-      .then((res) => {
-        const day = res.days.find((d) => d.date === selectedDate);
-        if (!day) {
-          setDaySlots([]);
-        } else {
-          // sort by time like Google Calendar chronological
-          const sorted = [...day.slots].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-          setDaySlots(sorted);
-        }
-      })
-      .catch((e) => {
-        setError(e.message);
-        setDaySlots([]);
-      })
-      .finally(() => setLoading(false));
-  }, [service, selectedDate]);
+  function handleMonthChange(m: string) {
+    setViewMonth(m);
+    // Month navigation clears the slot selection cleanly — never leave
+    // a phantom selected slot from a different month.
+    setSelectedSlot(null);
+    setTakenSlotNotice(null);
+  }
 
-  // --- handlers ---
   function handleSlotSelect(slot: string) {
     setSelectedSlot(slot);
+    setTakenSlotNotice(null);
     setStep("info");
   }
 
@@ -490,6 +492,7 @@ export default function Book() {
     if (!selectedSlot) return;
     setLoading(true);
     setError(null);
+    setTakenSlotNotice(null);
     try {
       // Guest-only booking — no account needed. Returning guests pick up
       // unfinished bookings on this device via the stored-booking banner.
@@ -504,7 +507,20 @@ export default function Book() {
       persistStored(result);
       setStep("success");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Booking failed");
+      if (isSlotTakenError(e)) {
+        // Expected race: the slot flipped Pending/Booked between day-load
+        // and submit. Show the specific message, refresh the day + month,
+        // and drop the stale selection instead of leaving it selected.
+        setTakenSlotNotice(slotTakenMessage());
+        setSelectedSlot(null);
+        setStep("datetime");
+        if (selectedDate) {
+          void queryClient.invalidateQueries({ queryKey: ["dayAvailability", selectedDate] });
+          void queryClient.invalidateQueries({ queryKey: ["monthAvailability", viewMonth] });
+        }
+      } else {
+        setError(e instanceof Error ? e.message : "Booking failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -528,17 +544,6 @@ export default function Book() {
       setLoading(false);
     }
   }
-
-  // --- date options: next 14 days ---
-  const dateOptions = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    return { value: formatDate(d), label: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) };
-  });
-
-  const availableCount = daySlots.filter((s) => s.status === "available").length;
-  const heldCount = daySlots.filter((s) => s.status === "held").length;
-  const bookedCount = daySlots.filter((s) => s.status === "booked").length;
 
   // --- success-stage derivation (5th stage: status-driven panels) ---
   const isBooked = booking?.status === "booked";
@@ -565,7 +570,11 @@ export default function Book() {
     <div className="min-h-[100dvh] bg-parchment text-espresso">
       <PublicNav />
       <NavSentinel />
-      <div className="mx-auto w-full max-w-lg space-y-4 px-4 pt-24 pb-16">
+      <div
+        className={`mx-auto w-full space-y-4 px-4 pt-24 pb-16 ${
+          step === "datetime" ? "max-w-6xl" : "max-w-lg"
+        }`}
+      >
         {/* header */}
         <div className="text-center mb-6">
           <p className="font-script text-2xl text-brass-deep">
@@ -643,128 +652,27 @@ export default function Book() {
           </Card>
         )}
 
-        {/* ── STEP 1: Date & Slot ─────────────────────── */}
+        {/* ── STEP 1: Scheduling (calendar grid + day slot picker) ── */}
         {step === "datetime" && (
-          <Card className="border-espresso/10 bg-cream text-espresso shadow-[0_2px_16px_-8px_rgb(43_33_24/0.3)]">
-            <CardHeader>
-              <CardTitle>Pick a Date & Time</CardTitle>
-              <CardDescription>
-                {service?.name}, {service?.duration_minutes} min. Times in 12-hour format
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* date selector */}
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Date</Label>
-                <Select
-                  value={selectedDate}
-                  onValueChange={(v) => {
-                    setSelectedDate(v ?? "");
-                    // New date → drop the old time selection (unless it's the
-                    // Schedule-prefilled slot for this load).
-                    setSelectedSlot((prev) =>
-                      preTime && prev === preTime ? prev : null,
-                    );
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a date" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dateOptions.map((d) => (
-                      <SelectItem key={d.value} value={d.value}>
-                        {d.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Google-style time slots — booked + available */}
-              {selectedDate && (
-                <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm font-medium">Available Times</Label>
-                      {daySlots.length > 0 && (
-                        <span className="text-[11px] text-espresso/60">
-                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-moss" /> {availableCount} free</span>
-                          <span className="mx-1.5">·</span>
-                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-bronze" /> {heldCount} held</span>
-                          <span className="mx-1.5">·</span>
-                          <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-espresso/30" /> {bookedCount} booked</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {loading ? (
-                      <div className="space-y-2">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                          <div key={i} className="h-[56px] bg-espresso/10 rounded-lg animate-pulse" />
-                        ))}
-                      </div>
-                    ) : daySlots.length === 0 ? (
-                        <div className="rounded-lg border border-espresso/10 bg-espresso/[0.03] p-6 text-center">
-                          <p className="text-sm text-espresso/80">No slots for this date. The shop is closed.</p>
-                          <p className="text-xs text-espresso/55 mt-1">Try another date or check the weekly schedule.</p>
-                        </div>
-                    ) : (
-                    <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
-                      {/* Google Calendar-like vertical timeline */}
-                      {daySlots.map((slot) => {
-                        const isAvailable = slot.status === "available";
-                        const isHeld = slot.status === "held";
-                        const isSelected = selectedSlot === slot.time;
-                        return (
-                          <button
-                            key={slot.time}
-                            onClick={() => isAvailable && handleSlotSelect(slot.time)}
-                            disabled={!isAvailable}
-                            className={`w-full min-h-11 text-left rounded-lg border-l-[3px] px-3 py-2.5 flex items-center justify-between gap-3 transition-all
-                              ${isSelected
-                                ? "bg-accent-deep text-cream-ink border-l-brass-bright shadow-lg shadow-oxblood/30"
-                                : isAvailable
-                                  ? "bg-moss/[0.06] border-espresso/10 border-l-moss hover:bg-moss/15 hover:border-moss/40"
-                                  : isHeld
-                                    ? "bg-bronze/[0.07] border-bronze/25 border-l-bronze opacity-80 cursor-not-allowed"
-                                    : "bg-espresso/[0.03] border-espresso/10 border-l-espresso/30 opacity-70 cursor-not-allowed"
-                              }`}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className={`text-sm font-medium tabular-nums flex items-center gap-1.5 ${isSelected ? "text-cream-ink" : isAvailable ? "text-espresso" : isHeld ? "text-espresso/70" : "text-espresso/50"}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isAvailable ? "bg-moss" : isHeld ? "bg-bronze" : "bg-espresso/30"} ${isSelected ? "bg-cream-ink" : ""}`} />
-                                {formatSlotRange(slot.time, service?.duration_minutes)}
-                              </div>
-                              <div className={`text-[11px] mt-0.5 ${isSelected ? "text-cream-ink/80" : isAvailable ? "text-moss" : isHeld ? "text-bronze" : "text-espresso/45"}`}>
-                                {isAvailable
-                                  ? `Available • ${service?.duration_minutes} min`
-                                  : isHeld
-                                    ? "Held • awaiting payment proof"
-                                    : "Booked • unavailable"}
-                              </div>
-                            </div>
-                            <div className="shrink-0 flex flex-col items-end gap-1">
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] h-5 border-0 ${isSelected ? "bg-cream-ink/25 text-cream-ink" : isAvailable ? "bg-moss/15 text-moss" : isHeld ? "bg-bronze/15 text-bronze" : "bg-espresso/10 text-espresso/55"}`}
-                              >
-                                {isAvailable ? "FREE" : isHeld ? "HELD" : "BOOKED"}
-                              </Badge>
-                              {isAvailable && !isSelected && <span className="text-[11px] text-moss font-medium">Tap to select →</span>}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <p className="text-[11px] text-espresso/55 mt-2">Green means free. Bronze means held by another customer. Faded means booked.</p>
-                </div>
-              )}
-
+          <>
+            <SchedulingSection
+              selectedDate={selectedDate}
+              selectedSlot={selectedSlot}
+              ownPendingSlot={null}
+              serviceName={service?.name}
+              serviceDurationMinutes={service?.duration_minutes}
+              takenSlotNotice={takenSlotNotice}
+              onSelectDate={handleDateSelect}
+              onSelectSlot={handleSlotSelect}
+              onMonthChange={handleMonthChange}
+              viewMonth={viewMonth}
+            />
+            <div>
               <Button variant="ghost" onClick={() => navigate("/schedule")} className="mt-2 text-espresso/70 hover:bg-espresso/5 hover:text-espresso">
                 ← View weekly schedule
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </>
         )}
 
         {/* ── STEP 2: Customer Info ───────────────────── */}
@@ -1070,10 +978,16 @@ export default function Book() {
                 <div className="bg-bronze/[0.08] border border-bronze/40 rounded-md px-4 py-3 text-sm">
                   <p className="font-medium text-bronze">⚠ Payment Required</p>
                   <p className="text-espresso/75 mt-1">
-                    Your slot is held for 15 minutes. Send the downpayment
-                    via GCash below and upload your proof of payment to keep
-                    it — the hold lifts once your proof is in, and the owner
-                    confirms your booking after verifying payment.
+                    Your slot is held for 15 minutes (
+                    {booking?.created_at ? (
+                      <HoldCountdown createdAt={booking.created_at} />
+                    ) : (
+                      "15:00"
+                    )}
+                    ). Send the downpayment via GCash below and upload your
+                    proof of payment to keep it — the hold lifts once your
+                    proof is in, and the owner confirms your booking after
+                    verifying payment.
                   </p>
                 </div>
               )}

@@ -149,3 +149,32 @@ class BookingClaim(BaseModel):
         if not v or not v.strip():
             raise ValueError("customer_phone is required")
         return v.strip()
+
+
+# ---------- Scheduling UI contracts ----------
+# Server-derived slot status for the booking calendar. The frontend
+# renders these verbatim — it never derives status from raw bookings.
+
+
+class DaySlotAvailability(BaseModel):
+    time: datetime
+    status: str  # available | pending | booked
+    expires_at: Optional[datetime] = None
+
+
+class DayAvailabilityResponse(BaseModel):
+    date: str
+    is_open: bool
+    slots: list[DaySlotAvailability]
+
+
+class MonthDaySummary(BaseModel):
+    date: str
+    has_busy: bool
+    has_pending: bool
+    is_closed: bool
+
+
+class MonthAvailabilityResponse(BaseModel):
+    month: str
+    days: list[MonthDaySummary]

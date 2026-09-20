@@ -484,3 +484,77 @@ export interface WeeklyScheduleResponse {
 export async function getWeeklySchedule(startDate: string): Promise<WeeklyScheduleResponse> {
   return request(`/bookings/weekly-schedule?start_date=${startDate}`);
 }
+
+// --- Scheduling UI contract (server-derived slot truth) ---
+// GET /bookings/availability?date=YYYY-MM-DD → full slot list with status
+// GET /bookings/availability?month=YYYY-MM → per-day summary for dots.
+// The frontend renders these verbatim — never derives status/expiry itself.
+
+/** Canonical slot status for the scheduling UI. Backend may still send
+ *  legacy "held" for day slots — normalized to "pending" on the way in. */
+export type DaySlotStatus = "available" | "pending" | "booked";
+
+export interface DaySlotAvailability {
+  time: string;
+  status: DaySlotStatus;
+  /** ISO timestamp when a pending hold expires (null unless pending). */
+  expires_at: string | null;
+}
+
+export interface DayAvailabilityResponse {
+  date: string;
+  is_open: boolean;
+  slots: DaySlotAvailability[];
+}
+
+export interface MonthDaySummary {
+  date: string;
+  has_busy: boolean;
+  has_pending: boolean;
+  is_closed: boolean;
+}
+
+export interface MonthAvailabilityResponse {
+  month: string;
+  days: MonthDaySummary[];
+}
+
+function normalizeSlotStatus(raw: string): DaySlotStatus {
+  if (raw === "held") return "pending";
+  if (raw === "pending" || raw === "booked" || raw === "available") return raw;
+  return "available";
+}
+
+export async function getDayAvailability(dateStr: string): Promise<DayAvailabilityResponse> {
+  const res = await request<{ date: string; is_open: boolean; slots: Array<{ time: string; status: string; expires_at: string | null }> }>(
+    `/bookings/availability?date=${dateStr}`,
+  );
+  return {
+    date: res.date,
+    is_open: res.is_open,
+    slots: res.slots.map((s) => ({
+      time: s.time,
+      status: normalizeSlotStatus(s.status),
+      expires_at: s.expires_at,
+    })),
+  };
+}
+
+export async function getMonthAvailability(month: string): Promise<MonthAvailabilityResponse> {
+  return request(`/bookings/availability?month=${month}`);
+}
+
+/** True when an ApiError is the slot-race conflict (slot flipped
+ *  Pending/Booked between day-load and submit). Carries the stable
+ *  SLOT_TAKEN code from the backend (409), with a fallback to message
+ *  matching for older backends that still return 400. */
+export function isSlotTakenError(err: unknown): boolean {
+  if (err instanceof ApiError && err.status === 409) return true;
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /SLOT_TAKEN|just taken|no longer available/i.test(msg);
+}
+
+/** Customer-facing message for the slot-race conflict — never the raw error. */
+export function slotTakenMessage(): string {
+  return "Someone just took this slot. Pick another time — the day's slots were refreshed.";
+}
